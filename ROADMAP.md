@@ -91,6 +91,8 @@ Task list below reflects the real contracts discovered by reading Person 4's act
 - [x] `npm audit`: 4 remaining findings (down from 8 after the vite dedup above fixed the esbuild-family ones), all requiring breaking major-version bumps (`jspdf@4`, `vitest@4`+`vite@7`) this phase can't fully regression-test — documented rather than force-fixed, same judgment call as Phases 2-3.
 - [x] Live-verified in a real browser (demo mode — no live backend+AI service pair running simultaneously in this environment, same constraint as Phase 3): login (both demo accounts), dashboard KPIs, Geofences map (MapLibre WebGL pin + radius editor, human-readable **and** GeoJSON-order coordinates both correct), and the flagged-queue Approve action (toast confirmation, row leaves the list, badge count decrements) — zero console errors throughout.
 - [ ] **Deferred to Phase 5:** switching `VITE_DEMO_MODE=0` against a live `Person3_BackendAPI` + `Person4_AIBiometricService` pair (needs Docker for MongoDB/MinIO, unavailable in this environment) and the Playwright e2e suite (needs `npx playwright install chromium webkit`, not attempted this phase). Everything above is code-complete and verified in isolation, matching Phase 3's same real-backend-integration gap.
+- [x] Merged `person2-web-dashboard` into `main` (`--no-ff`, commit `e360ce7`). Working tree clean afterward.
+- [x] Cross-suite sanity check re-run on the merged `main` (all four quadrants, since Phase 4's merge touches shared root state): backend `npm test` **133/133**, mobile client `npm test` **57/57**, web dashboard `npm test` **76/76**, AI service `pytest` (via the project `.venv`, not the system interpreter) **420/420**. All green — the merge introduced no regressions in any quadrant.
 
 ## Phase 5 — Integration
 
