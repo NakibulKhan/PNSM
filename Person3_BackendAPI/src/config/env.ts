@@ -99,45 +99,16 @@ export const MOBILE_ALLOWED_ORIGINS = optional(
 export const ALLOWED_ORIGINS = [...new Set([...ADMIN_ALLOWED_ORIGINS, ...MOBILE_ALLOWED_ORIGINS])];
 
 /**
- * Backend-owned R2 credentials for check-in selfie uploads (ADR-7).
- * Deliberately separate from whatever Person 2 holds for reference photos —
- * never assume they're the same values.
+ * Public base URL used to build a display link for a presigned admin
+ * reference-photo upload (see `uploadService.ts#presignAdminUpload`).
+ * Everything else about object storage — bucket, credentials, presigning —
+ * is owned entirely by Person 4's AI service (DECISIONS.md N2); this is the
+ * one storage-shaped value this backend still needs directly.
  */
-/**
- * Object storage. The v2 proposal specifies Cloudflare R2; the blueprint
- * specifies AWS S3. Both speak the S3 API, so one endpoint-configurable
- * client serves either — set STORAGE_PROVIDER and the matching endpoint
- * rather than maintaining two code paths.
- *   - 'r2' -> endpoint https://<account>.r2.cloudflarestorage.com, region 'auto'
- *   - 's3' -> endpoint left empty (SDK derives it), region e.g. ap-southeast-1
- */
-export const STORAGE_PROVIDER = (optional('STORAGE_PROVIDER', 'r2') === 's3' ? 's3' : 'r2') as 's3' | 'r2';
-export const STORAGE_ACCOUNT_ID = optional('STORAGE_ACCOUNT_ID', optional('R2_ACCOUNT_ID', ''));
-export const STORAGE_ACCESS_KEY_ID = optional('STORAGE_ACCESS_KEY_ID', optional('R2_ACCESS_KEY_ID', ''));
-export const STORAGE_SECRET_ACCESS_KEY = optional(
-  'STORAGE_SECRET_ACCESS_KEY',
-  optional('R2_SECRET_ACCESS_KEY', ''),
-);
-export const STORAGE_BUCKET = optional('STORAGE_BUCKET', optional('R2_BUCKET', 'pnsm-checkin-selfies'));
-export const STORAGE_REGION = optional('STORAGE_REGION', 'auto');
 export const STORAGE_PUBLIC_BASE_URL = optional(
   'STORAGE_PUBLIC_BASE_URL',
   optional('R2_PUBLIC_BASE_URL', ''),
 );
-export const STORAGE_CHECKIN_PREFIX = optional('STORAGE_CHECKIN_PREFIX', optional('R2_CHECKIN_PREFIX', 'checkins/'));
-
-/** Server-side upload cap. Person 1 compresses to <200KB; this is the backstop. */
-export const MAX_SELFIE_BYTES = optionalInt('MAX_SELFIE_BYTES', 512 * 1024);
-
-export function isStorageConfigured(): boolean {
-  return Boolean(
-    STORAGE_ACCESS_KEY_ID && STORAGE_SECRET_ACCESS_KEY && STORAGE_PUBLIC_BASE_URL &&
-    (STORAGE_PROVIDER === 's3' || STORAGE_ACCOUNT_ID),
-  );
-}
-
-/** Face verification service selection (ADR-8). 'mock' until Person 4's service exists. */
-export const FACE_SERVICE_PROVIDER = optional('FACE_SERVICE_PROVIDER', 'mock');
 
 /**
  * Person 4's AI service (PIN hash/verify, face embed/verify, upload presigning —
