@@ -1,0 +1,164 @@
+@import "tailwindcss";
+
+/* ---------------------------------------------------------------------------
+   Tailwind CSS v4 — CSS-first configuration.
+   There is intentionally NO tailwind.config.js in this project. v4's Oxide
+   engine reads design tokens from this @theme block and generates utility
+   classes from them (e.g. --color-text-navy => bg-text-navy / text-text-navy).
+   Token values are carried over verbatim from the team's approved PNSM
+   mockups so the Capacitor build is visually identical to the web design.
+   --------------------------------------------------------------------------- */
+@theme {
+  --color-primary: #000f22;
+  --color-primary-container: #0a2540;
+  --color-on-primary: #ffffff;
+  --color-on-primary-container: #768dad;
+  --color-text-navy: #0a2540;
+
+  --color-secondary: #00677f;
+  --color-secondary-container: #00ccf9;
+  --color-on-secondary-container: #005266;
+  --color-tertiary-container: #002547;
+
+  --color-ai-accent: #00d1ff;
+  --color-success-emerald: #10b981;
+  --color-error: #ba1a1a;
+  --color-error-container: #ffdad6;
+  --color-warning-amber: #f59e0b;
+  --color-warning-container: #fef3c7;
+
+  --color-background: #f7f9fb;
+  --color-surface: #f7f9fb;
+  --color-surface-bright: #f7f9fb;
+  --color-surface-container-lowest: #ffffff;
+  --color-surface-container-low: #f2f4f6;
+  --color-surface-container: #eceef0;
+  --color-surface-container-high: #e6e8ea;
+  --color-surface-container-highest: #e0e3e5;
+  --color-surface-border: #e2e8f0;
+
+  --color-on-surface: #191c1e;
+  --color-on-surface-variant: #43474d;
+  --color-outline: #74777e;
+  --color-outline-variant: #c4c6ce;
+
+  --font-display: "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-body: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
+}
+
+/* ---------------------------------------------------------------------------
+   Safari 16.3 / older WebKit resilience.
+
+   Per the blueprint's Quadrant II obstacle note, older iOS WebKit engines can
+   fail to parse the modern CSS that v4 emits for grid layouts, collapsing the
+   layout into overlapping boxes. This matters MORE in the Capacitor shell than
+   on the web dashboard: a Capacitor app renders inside the OS WebView, so an
+   employee on an older iPhone that the company hasn't replaced gets whatever
+   WebKit that iOS version ships — we cannot tell them to "use a different
+   browser" the way the web dashboard can.
+
+   Rather than downgrading Tailwind, feature-query fallbacks give legacy engines
+   a flexbox path. Applied to the app's own layout primitives only.
+   --------------------------------------------------------------------------- */
+@supports not (display: grid) {
+  .pnsm-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+  .pnsm-grid > * {
+    flex: 1 1 40%;
+  }
+  .pnsm-keypad {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .pnsm-keypad > * {
+    flex: 0 0 33.3333%;
+  }
+}
+
+@supports (display: grid) {
+  .pnsm-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.75rem;
+  }
+  .pnsm-keypad {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.75rem;
+  }
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-background);
+  color: var(--color-on-surface);
+  font-family: var(--font-body);
+  /* Keep content clear of the notch / home indicator inside the WebView. */
+  padding: env(safe-area-inset-top) env(safe-area-inset-right)
+    env(safe-area-inset-bottom) env(safe-area-inset-left);
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
+}
+
+/* Inputs must stay selectable even though the shell disables selection. */
+input,
+textarea {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* iOS zooms the WebView if an input's font-size is under 16px on focus. */
+input,
+select,
+textarea {
+  font-size: 16px;
+}
+
+@keyframes pnsm-scan {
+  0% {
+    top: -10%;
+    opacity: 0;
+  }
+  10%,
+  90% {
+    opacity: 1;
+  }
+  100% {
+    top: 110%;
+    opacity: 0;
+  }
+}
+
+.pnsm-scan-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--color-secondary-container);
+  box-shadow: 0 0 15px var(--color-secondary-container);
+  animation: pnsm-scan 2.5s infinite linear;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pnsm-scan-line {
+    animation: none;
+    opacity: 0.4;
+    top: 50%;
+  }
+}
