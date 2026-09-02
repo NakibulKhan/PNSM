@@ -1,0 +1,42 @@
+# Keep the build context small and the image free of anything that is not
+# needed to serve a request.
+
+.git
+.github
+.gitignore
+
+# secrets
+.env
+.env.*
+!.env.example
+
+# tests and tooling do not belong in a runtime image
+tests/
+scripts/
+clients/
+docs/
+Makefile
+pyproject.toml
+requirements-dev.txt
+
+# biometric data and generated artefacts
+calibration/dataset/
+calibration/*.png
+calibration/build_calibration.py
+
+# python noise
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# os / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

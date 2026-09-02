@@ -1,0 +1,125 @@
+{
+  "_comment": [
+    "What the CI deploy role may do once it has assumed the trust in",
+    "github-actions-deploy-role.json.",
+    "",
+    "  aws iam put-role-policy --role-name pnsm-github-deploy \\",
+    "      --policy-name pnsm-deploy --policy-document file://deploy/iam/github-actions-deploy-policy.json",
+    "",
+    "Deliberately narrow: push an image, register a task definition, update a",
+    "service, invalidate the CDN. It cannot create roles, cannot read secrets,",
+    "and cannot touch the biometric key. A pipeline that can grant itself",
+    "permissions is not a pipeline, it is an administrator."
+  ],
+
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "PushImages",
+      "Effect": "Allow",
+      "Action": [
+        "ecr:GetAuthorizationToken",
+        "ecr:BatchCheckLayerAvailability",
+        "ecr:InitiateLayerUpload",
+        "ecr:UploadLayerPart",
+        "ecr:CompleteLayerUpload",
+        "ecr:PutImage",
+        "ecr:BatchGetImage",
+        "ecr:DescribeImages"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "_comment": [
+          "GetAuthorizationToken is account-level and cannot be resource-",
+          "scoped, so the whole statement is scoped by repository name instead",
+          "via the ecr:ResourceTag / ARN pattern applied at the repository."
+        ],
+        "StringEqualsIfExists": {
+          "aws:ResourceAccount": "<ACCOUNT_ID>"
+        }
+      }
+    },
+    {
+      "Sid": "RollOutTaskDefinitions",
+      "_comment": [
+        "RegisterTaskDefinition cannot be resource-scoped by AWS; UpdateService",
+        "can, and is, so the blast radius of the unscoped call is a task",
+        "definition nobody has told a service to use."
+      ],
+      "Effect": "Allow",
+      "Action": [
+        "ecs:RegisterTaskDefinition",
+        "ecs:DescribeTaskDefinition",
+        "ecs:DescribeServices",
+        "ecs:ListTasks"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "UpdatePnsmServicesOnly",
+      "Effect": "Allow",
+      "Action": ["ecs:UpdateService"],
+      "Resource": "arn:aws:ecs:<REGION>:<ACCOUNT_ID>:service/pnsm-cluster/pnsm-*"
+    },
+    {
+      "Sid": "PassOnlyTheThreeNamedRoles",
+      "_comment": [
+        "iam:PassRole is the permission that turns a deploy role into an",
+        "administrator if left unscoped: anyone who can pass ANY role into a",
+        "task can run a container as that role. Restricted to the three roles",
+        "a PNSM deployment actually passes -- both task roles and the shared",
+        "execution role -- and further bound to ECS so none of them can be",
+        "passed to Lambda or EC2."
+      ],
+      "Effect": "Allow",
+      "Action": "iam:PassRole",
+      "Resource": [
+        "arn:aws:iam::<ACCOUNT_ID>:role/pnsm-ecs-execution-role",
+        "arn:aws:iam::<ACCOUNT_ID>:role/pnsm-ai-svc-task-role",
+        "arn:aws:iam::<ACCOUNT_ID>:role/pnsm-api-task-role"
+      ],
+      "Condition": {
+        "StringEquals": { "iam:PassedToService": "ecs-tasks.amazonaws.com" }
+      }
+    },
+    {
+      "Sid": "PublishFrontendBundleAndBustTheCache",
+      "_comment": [
+        "The SPA is uploaded to the web bucket and then invalidated at the",
+        "edge. Without the invalidation, index.html keeps being served from",
+        "cache and a deploy appears to do nothing for up to 24 hours."
+      ],
+      "Effect": "Allow",
+      "Action": ["s3:PutObject", "s3:DeleteObject", "s3:ListBucket"],
+      "Resource": [
+        "arn:aws:s3:::<WEB_BUCKET>",
+        "arn:aws:s3:::<WEB_BUCKET>/*"
+      ]
+    },
+    {
+      "Sid": "InvalidateCloudFront",
+      "Effect": "Allow",
+      "Action": ["cloudfront:CreateInvalidation", "cloudfront:GetInvalidation"],
+      "Resource": "arn:aws:cloudfront::<ACCOUNT_ID>:distribution/<DISTRIBUTION_ID>"
+    },
+    {
+      "Sid": "NeverTouchTheBiometricKeyOrTheSecrets",
+      "_comment": [
+        "An explicit Deny so that a later, broader Allow -- an AWS managed",
+        "policy attached in a hurry, say -- cannot quietly widen this role into",
+        "one that can read the HMAC secret or decrypt an employee's face.",
+        "Nothing in a deployment needs either."
+      ],
+      "Effect": "Deny",
+      "Action": [
+        "kms:Decrypt",
+        "kms:GenerateDataKey",
+        "secretsmanager:GetSecretValue",
+        "iam:CreateRole",
+        "iam:AttachRolePolicy",
+        "iam:PutRolePolicy"
+      ],
+      "Resource": "*"
+    }
+  ]
+}

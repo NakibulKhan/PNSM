@@ -1,0 +1,101 @@
+# nginx server block for the PNSM frontends (Person 1 mobile web, Person 2 HR).
+#
+# A template, not a finished config: ${PNSM_API_ORIGIN} and ${PNSM_S3_ORIGIN}
+# are substituted by `envsubst` in stage 2 of deploy/frontend.Dockerfile, at
+# BUILD time. Doing it at build time rather than through the nginx image's own
+# template mechanism is deliberate -- that mechanism runs as root in the
+# entrypoint, and this image drops to the unprivileged `nginx` user.
+#
+# envsubst is given an explicit variable list, so nginx's own `$uri`,
+# `$document_root` and friends survive untouched.
+#
+# Two jobs: serve a single-page app correctly, and satisfy OWASP A02 at the
+# edge that actually returns the HTML.
+#
+# The headers here are the browser-facing half of A02. The API's own headers
+# are set by app/security/headers.py; both are needed, because a response is
+# only as safe as the server that emitted it.
+
+server {
+    listen 8080;
+    server_name _;
+
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # Never advertise the version. "nginx" alone is far less useful to a
+    # scanner than "nginx/1.27.3".
+    server_tokens off;
+
+    # The bundle was pre-compressed at build time, so this costs no CPU.
+    gzip_static on;
+    gzip off;
+
+    # ------------------------------------------------------------ A02 headers
+    # default-src 'self' is the master plan's directive, extended only where the
+    # app genuinely needs it:
+    #   connect-src  the API origin and the S3 bucket for presigned selfie PUTs
+    #   img-src      blob: and data: for the <canvas> compression step before
+    #                upload, https: for CloudFront-delivered selfies
+    #   style-src    'unsafe-inline' because Tailwind v4 injects a style element;
+    #                removing it needs a nonce, which needs SSR, which this
+    #                deliberately static build does not have
+    # The two ${...} placeholders are the only substituted values.
+    add_header Content-Security-Policy "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' ${PNSM_API_ORIGIN} ${PNSM_S3_ORIGIN}; worker-src 'self' blob:; upgrade-insecure-requests" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header Permissions-Policy "accelerometer=(), camera=(self), geolocation=(self), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()" always;
+    add_header Cross-Origin-Opener-Policy "same-origin" always;
+    # HSTS is emitted here as well as at CloudFront: a request that reaches the
+    # task directly (an ALB health check, a misrouted rule) still gets it.
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+
+    # camera=(self) and geolocation=(self) are deliberate. The check-in flow is
+    # the whole product; denying them would break it. They are scoped to this
+    # origin so an embedded third-party frame cannot inherit them.
+
+    # ------------------------------------------------------------ health probe
+    # Answered before the SPA fallback so the ALB never gets a 200 page of HTML
+    # and calls it healthy while the bundle is missing.
+    location = /healthz {
+        access_log off;
+        add_header Content-Type text/plain;
+        return 200 "ok\n";
+    }
+
+    # -------------------------------------------------------------- SPA assets
+    # Vite fingerprints every built asset (app.4f2c1a.js), so these are
+    # immutable and can be cached for a year. index.html must never be.
+    location /assets/ {
+        expires 1y;
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+        try_files $uri =404;
+    }
+
+    location = /index.html {
+        add_header Cache-Control "no-store, must-revalidate" always;
+    }
+
+    # ------------------------------------------------------------ SPA fallback
+    # React Router owns the path space. A deep link such as /dashboard/geofences
+    # has no file behind it, so unmatched paths return index.html and the router
+    # resolves them client-side.
+    #
+    # This is the origin-side half of the rewrite; CloudFront needs the same
+    # rule in its custom error responses (deploy/cloudfront-distribution.json)
+    # because a cached 404 from the origin would otherwise be served to every
+    # subsequent visitor.
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # Dotfiles are never part of a Vite build. If one appears in the image it is
+    # a packaging mistake (a stray .env, a .git directory) and must not be
+    # readable.
+    location ~ /\. {
+        deny all;
+        access_log off;
+        log_not_found off;
+    }
+}

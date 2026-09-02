@@ -1,0 +1,184 @@
+{
+  "_comment": [
+    "ECS Fargate task definition for pnsm-ai-svc (Person 4, Quadrant IV).",
+    "",
+    "Register it with:",
+    "  aws ecs register-task-definition --cli-input-json file://deploy/ecs-task-definition.json",
+    "",
+    "Placeholders in ANGLE BRACKETS are filled by scripts/provision_aws.py, which",
+    "renders this file with the account id, region and ARNs it just created.",
+    "Nothing here is a secret: every secret arrives through `secrets`, which ECS",
+    "resolves from Secrets Manager at task start. A secret in `environment` would",
+    "be visible to anyone with ecs:DescribeTaskDefinition, which is a wider",
+    "audience than it looks.",
+    "",
+    "Sizing: 0.5 vCPU / 1024 MB. Two ONNX sessions plus the Python runtime sit",
+    "around 300 MB resident (tests/memory enforces the ceiling); 1024 MB is the",
+    "smallest Fargate memory value that pairs with 512 CPU units and leaves room",
+    "for a burst without the kernel OOM-killing a check-in mid-inference.",
+    "",
+    "This file describes the AI service only. Person 3's Express API and the two",
+    "nginx frontends get their own task definitions from the same template; the",
+    "differences are the image, port, health-check path and secret list."
+  ],
+
+  "family": "pnsm-ai-svc",
+  "requiresCompatibilities": ["FARGATE"],
+  "networkMode": "awsvpc",
+  "cpu": "512",
+  "memory": "1024",
+
+  "runtimePlatform": {
+    "cpuArchitecture": "X86_64",
+    "operatingSystemFamily": "LINUX"
+  },
+
+  "_comment_roles": [
+    "executionRoleArn pulls the image and writes log streams -- it is used by",
+    "the ECS agent BEFORE the container runs, and is also what reads the",
+    "Secrets Manager entries below.",
+    "taskRoleArn is what the application code itself gets: KMS and S3, nothing",
+    "else. Keeping them separate is OWASP A01 at the infrastructure layer -- a",
+    "compromised container cannot pull other images or read other secrets."
+  ],
+  "executionRoleArn": "arn:aws:iam::<ACCOUNT_ID>:role/pnsm-ecs-execution-role",
+  "taskRoleArn": "arn:aws:iam::<ACCOUNT_ID>:role/pnsm-ai-svc-task-role",
+
+  "containerDefinitions": [
+    {
+      "name": "ai-svc",
+      "image": "<ACCOUNT_ID>.dkr.ecr.<REGION>.amazonaws.com/pnsm-ai-svc:<IMAGE_TAG>",
+      "essential": true,
+
+      "portMappings": [
+        {
+          "name": "http",
+          "containerPort": 8000,
+          "protocol": "tcp",
+          "appProtocol": "http"
+        }
+      ],
+
+      "_comment_hardening": [
+        "readonlyRootFilesystem is the single highest-value container control",
+        "here: the service writes nothing to disk at runtime, so a file dropped",
+        "by an exploit has nowhere to land. /tmp is mounted as a tmpfs volume",
+        "below because Python's tempfile and ONNX Runtime both expect it.",
+        "The image already runs as uid 10001; `user` restates it so a rebuilt",
+        "image that lost its USER directive cannot silently start as root."
+      ],
+      "user": "10001",
+      "readonlyRootFilesystem": true,
+      "privileged": false,
+      "linuxParameters": {
+        "initProcessEnabled": true,
+        "capabilities": {
+          "drop": ["ALL"]
+        }
+      },
+      "mountPoints": [
+        {
+          "sourceVolume": "tmp",
+          "containerPath": "/tmp",
+          "readOnly": false
+        }
+      ],
+
+      "environment": [
+        { "name": "PNSM_APP_ENV", "value": "production" },
+        { "name": "PNSM_LOG_LEVEL", "value": "INFO" },
+        { "name": "PNSM_AUTH_REQUIRED", "value": "true" },
+
+        { "name": "PNSM_KEY_PROVIDER", "value": "kms" },
+        { "name": "PNSM_KMS_KEY_ID", "value": "<KMS_KEY_ARN>" },
+        { "name": "PNSM_KMS_DEK_CACHE_TTL_S", "value": "300" },
+
+        { "name": "PNSM_AWS_REGION", "value": "<REGION>" },
+        { "name": "PNSM_S3_BUCKET", "value": "<SELFIE_BUCKET>" },
+        { "name": "PNSM_S3_SSE_KMS_KEY_ID", "value": "<KMS_KEY_ARN>" },
+        { "name": "PNSM_CLOUDFRONT_DOMAIN", "value": "<CLOUDFRONT_DOMAIN>" },
+
+        { "name": "PNSM_DECISION_BANDS", "value": "two" },
+        { "name": "PNSM_SECURITY_HEADERS", "value": "true" },
+        { "name": "PNSM_WARMUP_ON_START", "value": "true" },
+        { "name": "PNSM_BCRYPT_COST", "value": "10" },
+
+        { "name": "PNSM_MODEL_DIR", "value": "/app/models" },
+        { "name": "PNSM_CALIBRATION_PATH", "value": "/app/calibration/calibration.json" },
+
+        { "name": "OMP_NUM_THREADS", "value": "1" },
+        { "name": "OPENBLAS_NUM_THREADS", "value": "1" },
+        { "name": "MKL_NUM_THREADS", "value": "1" }
+      ],
+
+      "_comment_secrets": [
+        "PNSM_FLE_KEYS is still listed even though PNSM_KEY_PROVIDER=kms. It is",
+        "not used to seal anything new: it is what opens envelopes written",
+        "before the KMS migration, so `scripts/rotate_keys.py --to kms` can",
+        "re-wrap them. Remove this entry once the migration report shows zero",
+        "envelopes with kp=static."
+      ],
+      "secrets": [
+        { "name": "PNSM_HMAC_SECRET", "valueFrom": "arn:aws:secretsmanager:<REGION>:<ACCOUNT_ID>:secret:pnsm/hmac-secret" },
+        { "name": "PNSM_PIN_PEPPER", "valueFrom": "arn:aws:secretsmanager:<REGION>:<ACCOUNT_ID>:secret:pnsm/pin-pepper" },
+        { "name": "PNSM_ADMIN_TOKEN", "valueFrom": "arn:aws:secretsmanager:<REGION>:<ACCOUNT_ID>:secret:pnsm/admin-token" },
+        { "name": "PNSM_FLE_KEYS", "valueFrom": "arn:aws:secretsmanager:<REGION>:<ACCOUNT_ID>:secret:pnsm/fle-keys" }
+      ],
+
+      "_comment_health": [
+        "startPeriod 60s covers the cold start: interpreter, two ONNX sessions",
+        "and one warm-up inference. Without it the first probe fires while the",
+        "model is still loading and ECS kills a task that was about to be fine.",
+        "/health is deliberately cheap -- no model call, no network -- so the",
+        "probe never competes with a check-in for the half-core it has."
+      ],
+      "healthCheck": {
+        "command": ["CMD-SHELL", "curl -fsS http://localhost:8000/health || exit 1"],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 60
+      },
+
+      "stopTimeout": 30,
+
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/pnsm-ai-svc",
+          "awslogs-region": "<REGION>",
+          "awslogs-stream-prefix": "ai-svc",
+          "awslogs-create-group": "true",
+          "mode": "non-blocking",
+          "max-buffer-size": "4m"
+        }
+      }
+    }
+  ],
+
+  "_comment_volumes": [
+    "An empty `host` volume, not EBS or EFS. On Fargate that is a scratch",
+    "directory on the task's own ephemeral storage: AWS encrypts it at rest,",
+    "and it is destroyed with the task, so nothing written under /tmp outlives",
+    "the container or reaches a volume another task could mount.",
+    "",
+    "Note that Fargate does NOT support linuxParameters.tmpfs -- that field is",
+    "EC2-launch-type only, and a task definition using it is rejected at",
+    "registration. This is the Fargate-legal equivalent."
+  ],
+  "volumes": [
+    {
+      "name": "tmp",
+      "configuredAtLaunch": false,
+      "host": {}
+    }
+  ],
+
+  "tags": [
+    { "key": "Project", "value": "PNSM" },
+    { "key": "Course", "value": "CSE482L-Group8" },
+    { "key": "Quadrant", "value": "IV-Biometrics-Cloud-DevOps" },
+    { "key": "Owner", "value": "Person4" },
+    { "key": "DataClass", "value": "biometric-pii" }
+  ]
+}

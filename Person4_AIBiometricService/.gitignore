@@ -1,0 +1,47 @@
+# --- secrets ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# --- biometric data ---
+# Calibration photographs are personal data. They are collected with consent,
+# used to fit the threshold, and deleted when the project is marked. They must
+# never enter version control.
+calibration/dataset/
+calibration/*.png
+!calibration/calibration.json
+
+# --- model weights ---
+# 16 MB of binary does not belong in git. Fetch them with:
+#   python scripts/fetch_models.py
+# checksums.txt IS committed, so a changed upstream artifact is detectable.
+models/*.onnx
+!models/checksums.txt
+!models/README.md
+
+# --- generated deployment manifests ---
+# scripts/provision_aws.py renders deploy/*.json with the real account id,
+# bucket names and key ARNs. The templates are committed; the rendered copies
+# are environment-specific and are not.
+deploy/rendered/
+
+# --- python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# --- os / editor ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

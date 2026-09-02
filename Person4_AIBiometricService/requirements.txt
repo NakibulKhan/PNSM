@@ -1,0 +1,35 @@
+# Runtime dependencies for pnsm-ai-svc.
+#
+# Ranges here, exact hashes in requirements.lock. Regenerate the lock with:
+#
+#     make lock          (wraps: pip-compile --generate-hashes)
+#
+# and commit it -- the Docker build installs from the lock, so a deploy is
+# reproducible even when an upstream release lands mid-week.
+#
+# NOTHING that pulls TensorFlow or PyTorch may be added to this file.
+# `deepface` and `insightface` both do, and both exceed the task's memory
+# limit on import alone. Inference runs through onnxruntime against exported .onnx
+# weights instead. scripts/check_deps.py enforces this in CI.
+
+# --- web ---
+fastapi>=0.115,<1.0
+uvicorn[standard]>=0.30,<1.0
+pydantic>=2.7,<3.0
+pydantic-settings>=2.3,<3.0
+
+# --- inference ---
+# headless: the GUI build pulls ~120 MB of X11 libraries we never use
+opencv-python-headless>=4.9,<5.0
+onnxruntime>=1.17,<2.0
+numpy>=1.26,<3.0
+
+# --- storage ---
+boto3>=1.34,<2.0
+
+# --- cryptography ---
+cryptography>=42.0
+bcrypt>=4.1,<6.0
+
+# --- observability ---
+psutil>=5.9,<8.0

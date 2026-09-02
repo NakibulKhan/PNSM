@@ -1,0 +1,93 @@
+{
+  "_comment": [
+    "Permissions granted to the ECS AGENT, not to the application",
+    "(executionRoleArn in deploy/ecs-task-definition.json).",
+    "",
+    "The agent uses these before and around the container: pull the image,",
+    "resolve the `secrets` block, open a log stream. The application never gets",
+    "them -- that is the entire point of ECS having two roles, and why the",
+    "task role in this directory contains no ECR and no Secrets Manager access.",
+    "A compromised container therefore cannot read the HMAC secret from",
+    "Secrets Manager; it only ever sees the one value already in its own",
+    "environment.",
+    "",
+    "Shared by all four PNSM services (AI, API, and the two frontends), which is",
+    "why the ECR statement is repository-scoped by name prefix rather than to a",
+    "single repository.",
+    "",
+    "Placeholders in ANGLE BRACKETS are filled by scripts/provision_aws.py."
+  ],
+
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AuthenticateToEcr",
+      "_comment": [
+        "GetAuthorizationToken cannot be resource-scoped -- it is an account",
+        "level call that returns a 12-hour registry token. This is an AWS API",
+        "shape, not a shortcut: the pull itself is scoped by the next statement."
+      ],
+      "Effect": "Allow",
+      "Action": "ecr:GetAuthorizationToken",
+      "Resource": "*"
+    },
+    {
+      "Sid": "PullPnsmImagesOnly",
+      "Effect": "Allow",
+      "Action": [
+        "ecr:BatchCheckLayerAvailability",
+        "ecr:GetDownloadUrlForLayer",
+        "ecr:BatchGetImage"
+      ],
+      "Resource": "arn:aws:ecr:<REGION>:<ACCOUNT_ID>:repository/pnsm-*"
+    },
+    {
+      "Sid": "WriteTaskLogs",
+      "_comment": [
+        "CreateLogGroup is here because the task definition sets",
+        "awslogs-create-group=true, so the group is made on first launch rather",
+        "than being a manual prerequisite that gets forgotten during a rebuild."
+      ],
+      "Effect": "Allow",
+      "Action": [
+        "logs:CreateLogGroup",
+        "logs:CreateLogStream",
+        "logs:PutLogEvents"
+      ],
+      "Resource": "arn:aws:logs:<REGION>:<ACCOUNT_ID>:log-group:/ecs/pnsm-*"
+    },
+    {
+      "Sid": "ResolveTaskSecrets",
+      "_comment": [
+        "Enumerated one ARN per secret, not `pnsm/*`. A wildcard would silently",
+        "widen the grant the moment somebody stores a fifth secret under the",
+        "same prefix -- for instance the MongoDB Atlas connection string, which",
+        "the AI service has no business reading."
+      ],
+      "Effect": "Allow",
+      "Action": "secretsmanager:GetSecretValue",
+      "Resource": [
+        "arn:aws:secretsmanager:<REGION>:<ACCOUNT_ID>:secret:pnsm/hmac-secret*",
+        "arn:aws:secretsmanager:<REGION>:<ACCOUNT_ID>:secret:pnsm/pin-pepper*",
+        "arn:aws:secretsmanager:<REGION>:<ACCOUNT_ID>:secret:pnsm/admin-token*",
+        "arn:aws:secretsmanager:<REGION>:<ACCOUNT_ID>:secret:pnsm/fle-keys*"
+      ]
+    },
+    {
+      "Sid": "DecryptThoseSecrets",
+      "_comment": [
+        "Secrets Manager encrypts with KMS, so reading a secret needs a Decrypt",
+        "the agent would otherwise be denied. Bound to via-service so this role",
+        "cannot use the key for anything except unsealing a secret."
+      ],
+      "Effect": "Allow",
+      "Action": "kms:Decrypt",
+      "Resource": "<SECRETS_KMS_KEY_ARN>",
+      "Condition": {
+        "StringEquals": {
+          "kms:ViaService": "secretsmanager.<REGION>.amazonaws.com"
+        }
+      }
+    }
+  ]
+}

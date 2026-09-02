@@ -1,0 +1,111 @@
+# The whole backend on a laptop, in one command.
+#
+#   cp .env.example .env && python scripts/gen_keys.py >> .env
+#   python scripts/fetch_models.py
+#   docker compose up
+#
+# What you get:
+#   :8000  the AI service          (Person 4)
+#   :8010  a mock of Person 3's API so Persons 1 and 2 are not blocked
+#   :9000  MinIO, standing in for AWS S3 (console on :9001)
+#
+# MinIO is S3-API compatible, so app/storage/s3.py talks to it with the same
+# code path it uses against real S3 -- only PNSM_S3_ENDPOINT changes. What it
+# cannot stand in for is KMS, so the local profile uses the static key
+# provider; the KMS path is covered by tests/unit/test_keyproviders.py.
+#
+# The memory limit mirrors deploy/ecs-task-definition.json. If it does not fit
+# here it will not fit on Fargate either, and finding that out on a laptop is
+# considerably cheaper.
+
+services:
+  ai-svc:
+    build: .
+    container_name: pnsm-ai-svc
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      PNSM_APP_ENV: local
+      PNSM_LOG_LEVEL: INFO
+      PNSM_S3_ENDPOINT: http://minio:9000
+      PNSM_S3_ACCESS_KEY_ID: pnsmlocal
+      PNSM_S3_SECRET_ACCESS_KEY: pnsmlocal-secret
+      PNSM_S3_BUCKET: pnsm-selfies
+      # Matches the deployed region so the one place a signature could differ
+      # between laptop and Fargate does not.
+      PNSM_AWS_REGION: ap-southeast-1
+      PNSM_KEY_PROVIDER: static
+    depends_on:
+      minio-init:
+        condition: service_completed_successfully
+    deploy:
+      resources:
+        limits:
+          memory: 1024M
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 45s
+    restart: unless-stopped
+
+  mock-api:
+    build: .
+    container_name: pnsm-mock-api
+    command: >
+      python scripts/mock_api.py
+    ports:
+      - "8010:8010"
+    env_file:
+      - .env
+    environment:
+      PNSM_AI_URL: http://ai-svc:8000
+    volumes:
+      - ./scripts:/app/scripts:ro
+      - ./clients:/app/clients:ro
+      - ./tests:/app/tests:ro
+    depends_on:
+      ai-svc:
+        condition: service_healthy
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio:latest
+    container_name: pnsm-minio
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: pnsmlocal
+      MINIO_ROOT_PASSWORD: pnsmlocal-secret
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # Creates the bucket and the CORS rules once, then exits. Keeping this as a
+  # separate one-shot service is what lets ai-svc wait for a *ready bucket*
+  # rather than merely a running MinIO.
+  minio-init:
+    image: minio/mc:latest
+    container_name: pnsm-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 pnsmlocal pnsmlocal-secret &&
+      mc mb --ignore-existing local/pnsm-selfies &&
+      mc anonymous set none local/pnsm-selfies &&
+      echo 'bucket pnsm-selfies ready'
+      "
+
+volumes:
+  minio-data:

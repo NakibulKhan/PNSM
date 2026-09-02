@@ -1,0 +1,112 @@
+{
+  "_comment": [
+    "CloudFront response headers policy for the PNSM frontends.",
+    "",
+    "  aws cloudfront create-response-headers-policy \\",
+    "      --cli-input-json file://deploy/cloudfront-response-headers-policy.json",
+    "",
+    "The id it returns goes into ResponseHeadersPolicyId in",
+    "deploy/cloudfront-distribution.json.",
+    "",
+    "WHY NOT JUST THE nginx HEADERS?",
+    "",
+    "Because for the SPA there is no nginx. The bundle is served from S3 through",
+    "CloudFront, and S3 returns exactly the headers stored on the object -- it",
+    "has no notion of a security policy. deploy/nginx.conf.template covers the",
+    "case where a frontend runs as an ECS task behind an ALB (staging, and",
+    "Person 2's dashboard if it ever needs an origin); this policy covers the",
+    "S3+CloudFront path. Both exist because both paths exist, and a header set",
+    "on only one of them is a header an attacker simply routes around.",
+    "",
+    "OWASP A02, master plan: Content-Security-Policy default-src 'self' and",
+    "X-Frame-Options DENY.",
+    "",
+    "The CSP here is the same policy as the nginx template. Keep them in step:",
+    "tests/security/test_headers_parity.py fails if they drift.",
+    "",
+    "SHAPE: create-response-headers-policy takes",
+    "{\"ResponseHeadersPolicyConfig\": {...}}, not the config fields at the top",
+    "level."
+  ],
+  "ResponseHeadersPolicyConfig": {
+    "Name": "pnsm-frontend-security-headers",
+    "Comment": "OWASP A02 headers for the PNSM SPA served from S3",
+    "SecurityHeadersConfig": {
+      "ContentSecurityPolicy": {
+        "Override": true,
+        "ContentSecurityPolicy": "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' <API_ORIGIN> <S3_ORIGIN>; worker-src 'self' blob:; upgrade-insecure-requests"
+      },
+      "FrameOptions": {
+        "Override": true,
+        "FrameOption": "DENY"
+      },
+      "ContentTypeOptions": {
+        "Override": true
+      },
+      "ReferrerPolicy": {
+        "Override": true,
+        "ReferrerPolicy": "strict-origin-when-cross-origin"
+      },
+      "_comment_hsts": [
+        "Two years with preload. Preload is a one-way door -- browsers ship the",
+        "list in their binaries and removal takes months -- so it is set only",
+        "once the custom domain is final. Until then, drop Preload to false."
+      ],
+      "StrictTransportSecurity": {
+        "Override": true,
+        "AccessControlMaxAgeSec": 63072000,
+        "IncludeSubdomains": true,
+        "Preload": true
+      },
+      "XSSProtection": {
+        "_comment": [
+          "X-XSS-Protection: 0. Not a typo and not laziness. The legacy XSS",
+          "auditor it enables was removed from every modern browser and, while it",
+          "existed, introduced its own information-disclosure bugs. Explicitly",
+          "disabling it is current OWASP guidance; the CSP above is the real",
+          "control."
+        ],
+        "Override": true,
+        "Protection": false,
+        "ModeBlock": false
+      }
+    },
+    "CustomHeadersConfig": {
+      "Quantity": 2,
+      "Items": [
+        {
+          "_comment": [
+            "camera and geolocation are granted to self because the check-in flow",
+            "is the entire product. Everything else is denied outright, so a",
+            "compromised third-party script cannot reach a sensor the app never",
+            "uses."
+          ],
+          "Header": "Permissions-Policy",
+          "Value": "accelerometer=(), camera=(self), geolocation=(self), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()",
+          "Override": true
+        },
+        {
+          "Header": "Cross-Origin-Opener-Policy",
+          "Value": "same-origin",
+          "Override": true
+        }
+      ]
+    },
+    "RemoveHeadersConfig": {
+      "_comment": [
+        "S3 stamps every response with x-amz-request-id and x-amz-id-2. They are",
+        "useful in a support ticket and useless to a browser, and they confirm",
+        "the storage backend to anyone running curl. Stripped at the edge."
+      ],
+      "Quantity": 2,
+      "Items": [
+        {
+          "Header": "x-amz-request-id"
+        },
+        {
+          "Header": "x-amz-id-2"
+        }
+      ]
+    }
+  }
+}

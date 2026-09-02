@@ -1,0 +1,9 @@
+{
+  "name": "pnsm-frontend-smoke",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Minimal stand-in for Person 1's and Person 2's Vite apps. It exists so CI can build deploy/frontend.Dockerfile end to end -- proving the multi-stage split works, npm ci succeeds, nginx -t passes and the final image really is under 50 MB -- without this repository depending on either frontend checkout. Zero dependencies on purpose: the point is to measure the base cost of the runtime stage, and any dependency would make the number about that dependency instead.",
+  "scripts": {
+    "build": "node build.mjs"
+  }
+}

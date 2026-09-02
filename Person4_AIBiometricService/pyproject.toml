@@ -1,0 +1,72 @@
+[project]
+name = "pnsm-ai-svc"
+version = "1.0.0"
+description = "AI biometrics, cryptography and cloud DevOps service for the PNSM Workforce Attendance & Management System"
+requires-python = ">=3.11"
+authors = [{ name = "Person 4 - AI, Security & DevOps", email = "pnsm.team@nsu.edu.bd" }]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q --strict-markers --strict-config"
+markers = [
+  "slow: takes more than a second (memory and load tests)",
+]
+filterwarnings = ["error::DeprecationWarning:app.*"]
+
+[tool.ruff]
+line-length = 108
+target-version = "py311"
+src = ["app", "tests", "scripts", "calibration", "clients/python"]
+
+[tool.ruff.lint]
+select = [
+  "E", "W",    # pycodestyle
+  "F",         # pyflakes
+  "I",         # import sorting
+  "B",         # bugbear
+  "UP",        # pyupgrade
+  "S",         # bandit-style security checks
+  "C4",        # comprehensions
+  "SIM",       # simplify
+  "RUF",
+]
+ignore = [
+  "E501",    # line length is handled by the formatter
+  "B008",    # FastAPI's Depends() in defaults is the documented idiom
+  "S104",    # binding 0.0.0.0 is correct inside a container
+  "RUF012",  # mutable class attrs without ClassVar; noisy on pydantic models
+  # StrEnum would be the modern spelling, but `str(Decision.APPROVED)` returns
+  # "Decision.APPROVED" under a (str, Enum) mixin and "approved" under StrEnum.
+  # Every consumer here reads `.value` explicitly, so the change buys nothing
+  # and would silently alter any log line or f-string that does not.
+  "UP042",
+]
+
+[tool.ruff.lint.isort]
+# Without this, ruff classifies `app`, `scripts`, `tests` and `calibration` as
+# third-party and sorts them into the wrong block -- which makes `ruff check`
+# and `ruff format` disagree with each other about the same file.
+known-first-party = ["app", "calibration", "clients", "scripts", "tests"]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests assert, use fixed test keys, and reach into private state to prove
+# memory bounds. All three are deliberate there and nowhere else.
+"tests/**" = ["S101", "S105", "S106", "S311", "SLF001"]
+"scripts/**" = ["S101", "S310", "S603", "S607"]
+"calibration/**" = ["S101"]
+
+[tool.mypy]
+python_version = "3.11"
+files = ["app"]
+strict_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = false
+warn_unreachable = true
+disallow_untyped_defs = false
+ignore_missing_imports = true
+plugins = []
+
+[[tool.mypy.overrides]]
+module = ["cv2.*", "onnxruntime.*", "boto3.*", "botocore.*", "bcrypt.*", "psutil.*"]
+ignore_missing_imports = true
