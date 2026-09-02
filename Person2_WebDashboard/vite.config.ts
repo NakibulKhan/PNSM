@@ -1,7 +1,20 @@
+/// <reference types="vitest/config" />
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import path from 'node:path';
+
+// The triple-slash reference augments Vite's UserConfig type with the `test`
+// field below. (Importing `defineConfig` from 'vitest/config' instead is the
+// other commonly-suggested fix, but backfired here: vitest@2.1.9's own
+// dependency tree carries a duplicate, older vite@5.4.21 alongside this
+// project's pinned vite@6.4.3, and vitest/config's defineConfig resolves
+// against the nested 5.4.21 copy — which TypeScript then treats as a
+// different, incompatible Plugin type from the 6.4.3 one @vitejs/plugin-react
+// and @tailwindcss/vite are built against. Fixed at the source instead, via
+// package.json's "overrides" forcing a single deduped vite version — see the
+// comment there. First real `npm run typecheck` for this project (never run
+// before) caught all of this.
 
 /**
  * Vite replaces the deprecated Create React App toolchain entirely.

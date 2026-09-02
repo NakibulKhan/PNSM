@@ -127,7 +127,6 @@ export function PhotoUpload({
         )}
       >
         {preview ? (
-          // eslint-disable-next-line @next/next/no-img-element
           <img
             src={preview}
             alt="Reference photo preview"

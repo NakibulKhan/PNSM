@@ -86,15 +86,50 @@ export const latLngSchema = z.object({
  * If coordinates arrive as [lat, lng] for a Bangladesh location, the first
  * value lands in 20.5-26.7 and the second in 88-92.7 — a pattern that cannot
  * occur in correct [lng, lat] data for this country. We reject it loudly.
+ *
+ * The flip check runs BEFORE the plain range checks, deliberately, via
+ * `superRefine` rather than `.tuple([longitudeSchema, latitudeSchema]).refine()`:
+ * a real Dhaka longitude (~90.4) exceeds latitude's ±90 range, so a flipped
+ * [lat, lng] pair for this country always trips the range check on its own —
+ * `.refine()` never runs once the base tuple has already failed, so the
+ * specific, actionable "this looks reversed" message never surfaced for
+ * exactly the coordinate pairs it exists to catch. First real `npm test` run
+ * for this project (never executed before) caught this via the regression
+ * suite's own assertion on `issues[0]`.
  */
 export const geoJSONPointSchema = z
   .object({
     type: z.literal('Point'),
-    coordinates: z.tuple([longitudeSchema, latitudeSchema]),
+    coordinates: z.tuple([
+      z.number({ invalid_type_error: 'Longitude must be a number' }),
+      z.number({ invalid_type_error: 'Latitude must be a number' }),
+    ]),
   })
-  .refine((point) => !looksFlippedForBangladesh(point.coordinates), {
-    message:
-      'Coordinates look reversed. GeoJSON requires [longitude, latitude]; this looks like [latitude, longitude].',
+  .superRefine((point, ctx) => {
+    const [lng, lat] = point.coordinates;
+    if (looksFlippedForBangladesh(point.coordinates)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['coordinates'],
+        message:
+          'Coordinates look reversed. GeoJSON requires [longitude, latitude]; this looks like [latitude, longitude].',
+      });
+      return; // A second, less specific range issue would only bury the useful one.
+    }
+    if (lng < -180 || lng > 180) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['coordinates', 0],
+        message: 'Longitude must be between -180 and 180',
+      });
+    }
+    if (lat < -90 || lat > 90) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['coordinates', 1],
+        message: 'Latitude must be between -90 and 90',
+      });
+    }
   });
 
 /** True when a [lng, lat] tuple looks like it was actually written [lat, lng]. */

@@ -64,7 +64,7 @@ export default function LoginPage() {
     }
   };
 
-  const useDemoAccount = (email: string) => {
+  const fillDemoAccount = (email: string) => {
     setValue('email', email);
     setValue('password', 'demo1234');
   };
@@ -168,7 +168,7 @@ export default function LoginPage() {
                     type="button"
                     variant="secondary"
                     size="sm"
-                    onClick={() => useDemoAccount('hr@pnsm.test')}
+                    onClick={() => fillDemoAccount('hr@pnsm.test')}
                   >
                     HR / Admin
                   </Button>
@@ -176,7 +176,7 @@ export default function LoginPage() {
                     type="button"
                     variant="secondary"
                     size="sm"
-                    onClick={() => useDemoAccount('super@pnsm.test')}
+                    onClick={() => fillDemoAccount('super@pnsm.test')}
                   >
                     Super Admin
                   </Button>

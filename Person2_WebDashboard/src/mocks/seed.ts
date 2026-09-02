@@ -310,11 +310,24 @@ function buildSpoofAlerts(now: Date): SpoofAlert[] {
 export function buildSeed(now: Date = new Date()) {
   const attendance = buildAttendance(now);
   return {
-    offices,
-    geofences,
-    users,
-    employees,
-    shifts,
+    // `offices`/`geofences`/`users`/`employees`/`shifts` are module-level
+    // singletons (computed once at import time from the deterministic rng,
+    // unlike `attendance`/`leave`/etc. below, which are freshly generated on
+    // every call). The mock API's write handlers mutate them in place
+    // (e.g. `data.offices.push(...)` on POST /geofences) — returned directly,
+    // that mutation would permanently leak into every later `resetMockStore()`
+    // call for the rest of the process, since "reset" would keep re-wrapping
+    // the same already-mutated arrays. Cloned here so every build is a
+    // genuinely independent snapshot. First real `npm test` run for this
+    // project (never executed before) caught this: a test that creates a
+    // geofence made every later attendance-related test in the same file
+    // throw, because the singleton `offices` array had grown to 5 entries
+    // while `OFFICE_SEED` (used for lat/lng lookups) stayed at 4.
+    offices: structuredClone(offices),
+    geofences: structuredClone(geofences),
+    users: structuredClone(users),
+    employees: structuredClone(employees),
+    shifts: structuredClone(shifts),
     attendance,
     leave: buildLeave(now),
     notifications: buildNotifications(now, attendance),
