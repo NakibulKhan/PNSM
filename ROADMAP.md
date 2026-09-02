@@ -66,13 +66,17 @@ Task list below reflects the real contracts discovered by reading Person 4's act
 
 ## Phase 3 — Person 1: Mobile Edge Client (parallel with Phase 4)
 
-- [ ] Point `src/lib/http.js`/`api.js` at the real local backend base URL
-- [ ] Verify raw-PIN flow end-to-end against the real backend (`DECISIONS.md` PIN decision)
-- [ ] Verify refresh-token handling reads the response body correctly (`DECISIONS.md` B1)
-- [ ] Get the check-in flow working against the real backend + AI service via Capacitor's browser/dev-server preview (no real native build this phase)
-- [ ] First real `npm test` run (never run in the authoring sandbox — no registry access)
-- [ ] Wire the 15s heartbeat to call the new `POST /mobile/heartbeat` (`DECISIONS.md` B7)
+- [x] Point `src/lib/http.js`/`api.js` at the real local backend base URL — `VITE_API_BASE_URL`, new `.env.example`, defaults to `http://localhost:5000`
+- [x] Verify raw-PIN flow end-to-end against the real backend (`DECISIONS.md` PIN decision) — confirmed no client change was needed; PIN was already sent raw, matching Person 3's real implementation
+- [x] Verify refresh-token handling reads the response body correctly (`DECISIONS.md` B1) — path fixed from `/api/auth/refresh` to `/api/mobile/auth/refresh` (N3); body field was already correct
+- [x] Get the check-in flow working against the real backend + AI service — rebuilt the whole payload to match Person 3's real `mobileCheckinSchema` (DECISIONS.md N2/N5): presigned upload replaces multipart (`uploadSelfie()`), added the required `device`/`captured_at` fields (`lib/deviceInfo.js`, using `@capacitor/device`'s real `isVirtual` flag for `is_emulator` — `is_rooted` has no implementation, honestly flagged rather than sent as a silent `false`-means-clean lie), dropped `employee_id` (identity now comes from the bearer token)
+- [x] First real `npm install`/`npm test`/`npm run build` run — 57/57 vitest passing (29 in a rewritten `checkinFlow.test.js`), clean build. Fixed one real pre-existing bug (`backoffMs()`'s exponent clamp couldn't reach its own documented cap). `npm audit` surfaced 27 findings, all in `@capacitor/cli`/`capacitor-mock-location-checker`'s own build-tooling dependency chains (not the shipped bundle) — documented in the mobile README rather than force-fixed, since that risks breaking native sync tooling this phase can't verify without Xcode/Android Studio.
+- [x] Wire the 15s heartbeat to call the new `POST /mobile/heartbeat` (`DECISIONS.md` B7) — path and payload shape both updated to match `mobileHeartbeatSchema` exactly (dropped the informal `employee_id`/`kind` fields the real endpoint doesn't expect)
+- [x] `GET /api/mobile/me` wiring (`DECISIONS.md` N4) — `AppContext.jsx` rewritten to fetch the real profile instead of hardcoded demo state; the client-side `OFFICES` directory and Profile screen's office picker are gone (office assignment is the backend's now, matching a real deployment). Found and fixed a real crash along the way: `App.jsx`'s telemetry effect read `state.employee.id` unconditionally in its dependency array, which threw once `employee` legitimately started as `null`.
+- [x] Login simplified to password-only (`DECISIONS.md` N3) — the PIN field on `LoginScreen.jsx` never was backed by any documented backend login check; removed rather than left implying a security gate that didn't exist server-side.
+- [x] Manually verified in a real browser (mock-backend mode, since no live backend+AI service pair was running simultaneously in this environment): login → home → profile → check-in all render correctly against a real fetched profile shape, zero console errors.
 - [ ] **Explicitly out of scope this phase:** native anti-mock-location checks, Android foreground service, iOS background location — all need a real native build (Android Studio/Xcode), which is outside "local dev-complete." Flagged for the deployment phase.
+- [ ] **Deferred to Phase 5:** an actual live run against `Person3_BackendAPI` + `Person4_AIBiometricService` together (needs Docker for MongoDB/MinIO, unavailable in this environment) — everything above is code-complete and verified in isolation (real unit tests against the real contract, real UI render against mock data) but not yet proven end-to-end against the other two real services at once.
 
 ## Phase 4 — Person 2: Web Command Center (parallel with Phase 3)
 
