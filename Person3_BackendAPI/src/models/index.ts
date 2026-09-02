@@ -12,3 +12,4 @@ export { AuditLogEntry } from './AuditLogEntry';
 export { SpoofAlert } from './SpoofAlert';
 export { Policy, getSingletonPolicy } from './Policy';
 export { Billing, getSingletonBilling } from './Billing';
+export { Heartbeat } from './Heartbeat';

@@ -1,4 +1,4 @@
-import { deriveWeekLabel } from '@/utils/shiftDays';
+import { deriveWeekLabel, parseWeekLabel } from '@/utils/shiftDays';
 
 describe('deriveWeekLabel (ADR-3)', () => {
   it('derives "Sun-Thu" from the Bangladesh business week', () => {
@@ -35,5 +35,47 @@ describe('deriveWeekLabel (ADR-3)', () => {
 
   it('returns an empty string for no days at all', () => {
     expect(deriveWeekLabel([])).toBe('');
+  });
+});
+
+describe('parseWeekLabel (DECISIONS.md N6 — the admin write-boundary inverse of deriveWeekLabel)', () => {
+  it('round-trips every shape deriveWeekLabel can produce', () => {
+    const cases = [
+      [0, 1, 2, 3, 4],
+      [1, 2, 3, 4, 5],
+      [3],
+      [0, 1, 2, 3, 4, 5, 6],
+      [0, 2, 4],
+      [5, 6, 0],
+      [6, 0],
+    ];
+    for (const days of cases) {
+      const label = deriveWeekLabel(days);
+      expect(parseWeekLabel(label).sort((a, b) => a - b)).toEqual([...days].sort((a, b) => a - b));
+    }
+  });
+
+  it('parses "Sun-Thu" directly', () => {
+    expect(parseWeekLabel('Sun-Thu')).toEqual([0, 1, 2, 3, 4]);
+  });
+
+  it('parses "Every day" as all seven days', () => {
+    expect(parseWeekLabel('Every day')).toEqual([0, 1, 2, 3, 4, 5, 6]);
+  });
+
+  it('parses a comma-separated list', () => {
+    expect(parseWeekLabel('Sun, Wed, Fri').sort()).toEqual([0, 3, 5].sort());
+  });
+
+  it('parses a wraparound range (Fri-Sun)', () => {
+    expect(parseWeekLabel('Fri-Sun').sort((a, b) => a - b)).toEqual([0, 5, 6].sort((a, b) => a - b));
+  });
+
+  it('throws on an unrecognised weekday', () => {
+    expect(() => parseWeekLabel('Funday')).toThrow();
+  });
+
+  it('returns an empty array for an empty label', () => {
+    expect(parseWeekLabel('')).toEqual([]);
   });
 });

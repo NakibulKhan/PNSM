@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import healthRoutes from './health.routes';
 import adminRoutes from './admin';
+import mobileRoutes from './mobile';
 
 const router = Router();
 
@@ -11,9 +12,8 @@ router.use(healthRoutes);
 // admin group under /api here reproduces that exact path shape.
 router.use('/api', adminRoutes);
 
-// Mobile routes (/api/attendance/checkin, /api/employees/:id/dashboard,
-// /api/employees/:id/attendance, /api/leave-requests) are NOT part of this
-// phase — Phase 1 is foundation + auth + health only, per the implementation
-// plan. They arrive in the phase that builds the attendance pipeline.
+// Mobile gets its own path family, not /api/auth/* etc. — DECISIONS.md N3
+// explains why the two conventions can't share a path.
+router.use('/api/mobile', mobileRoutes);
 
 export default router;

@@ -11,13 +11,25 @@ import { SOCKET_AUTH_FAILURE_MESSAGE } from '../../constants';
 import { logger } from '../../utils/logger';
 import type { AuthenticatedPrincipal } from '../../types/express';
 
-declare module 'socket.io' {
-  interface Socket {
-    data: { user?: AuthenticatedPrincipal };
-  }
+/**
+ * Per-socket data, via Socket.IO's own generic type parameters rather than
+ * `declare module 'socket.io' { interface Socket { data: ... } }` — Socket's
+ * `data` property is declared on the class itself (from its 4th generic
+ * parameter), and TS's declaration-merging rules require an augmented
+ * property to match EXACTLY, not just be assignable, so re-declaring it with
+ * a narrower type fails to compile. The generics are the mechanism the
+ * library actually designed for this.
+ */
+interface SocketData {
+  user?: AuthenticatedPrincipal;
 }
 
-let io: SocketIOServer | null = null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AppSocketIOServer = SocketIOServer<any, any, any, SocketData>;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type AppSocket = Socket<any, any, any, SocketData>;
+
+let io: AppSocketIOServer | null = null;
 
 /**
  * The handshake auth decision, extracted as a standalone function so it can
@@ -25,7 +37,7 @@ let io: SocketIOServer | null = null;
  * a real Socket.IO connection. Behavior is unchanged from before this
  * refactor — this is the same logic `io.use()` was given inline.
  */
-export function verifySocketAuth(socket: Socket, next: (err?: Error) => void): void {
+export function verifySocketAuth(socket: AppSocket, next: (err?: Error) => void): void {
   const token = socket.handshake.auth?.token as string | undefined;
   if (!token) {
     next(new Error(SOCKET_AUTH_FAILURE_MESSAGE));
@@ -44,7 +56,7 @@ export function verifySocketAuth(socket: Socket, next: (err?: Error) => void): v
   }
 }
 
-export function initSocketServer(httpServer: HttpServer): SocketIOServer {
+export function initSocketServer(httpServer: HttpServer): AppSocketIOServer {
   io = new SocketIOServer(httpServer, {
     cors: {
       origin: ADMIN_ALLOWED_ORIGINS,
@@ -62,7 +74,7 @@ export function initSocketServer(httpServer: HttpServer): SocketIOServer {
   // recovery path.
   io.use(verifySocketAuth);
 
-  io.on('connection', (socket: Socket) => {
+  io.on('connection', (socket: AppSocket) => {
     logger.info('Socket connected', { userId: socket.data.user?.sub });
     socket.on('disconnect', (reason: string) => {
       logger.info('Socket disconnected', { userId: socket.data.user?.sub, reason });
@@ -72,7 +84,7 @@ export function initSocketServer(httpServer: HttpServer): SocketIOServer {
   return io;
 }
 
-export function getSocketServer(): SocketIOServer {
+export function getSocketServer(): AppSocketIOServer {
   if (!io) throw new Error('Socket.IO server not initialized — call initSocketServer() first');
   return io;
 }

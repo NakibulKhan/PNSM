@@ -139,6 +139,24 @@ export function isStorageConfigured(): boolean {
 /** Face verification service selection (ADR-8). 'mock' until Person 4's service exists. */
 export const FACE_SERVICE_PROVIDER = optional('FACE_SERVICE_PROVIDER', 'mock');
 
+/**
+ * Person 4's AI service (PIN hash/verify, face embed/verify, upload presigning —
+ * see DECISIONS.md N1/N2). Not required outside test so the rest of the app can
+ * boot and be typechecked before the service is actually running locally; every
+ * call site surfaces a clear connection error rather than this file throwing at
+ * import time.
+ */
+export const PNSM_AI_URL = optional('PNSM_AI_URL', 'http://localhost:8000');
+export const PNSM_HMAC_SECRET = optional(
+  'PNSM_HMAC_SECRET',
+  // 32 zero bytes, base64-encoded — a valid-shaped local dev default so
+  // PnsmAiClient's constructor (which insists on a 32-byte secret) never
+  // throws at boot. Never valid against a real deployment of the AI service,
+  // which will reject every request with 401 until the real shared secret
+  // from Person 4 is set.
+  'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
+);
+
 /** Business constants that are also mirrored as defaults on the Policy singleton (ADR-5). */
 export const DEFAULT_FACE_MATCH_THRESHOLD = optionalInt('DEFAULT_FACE_MATCH_THRESHOLD', 85);
 
