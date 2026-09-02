@@ -200,8 +200,14 @@ def test_an_invalid_user_ref_is_refused(client) -> None:
     assert response.status_code == 400
 
 
-def test_an_unknown_route_returns_a_json_envelope(raw_client) -> None:
-    response = raw_client.get("/nope")
+def test_an_unknown_route_returns_a_json_envelope(client) -> None:
+    # A SIGNED request: /nope is not in EXEMPT_PATHS, so HmacAuthMiddleware
+    # (which wraps routing entirely, per app/main.py's middleware ordering)
+    # rejects an unsigned request with 401 before Starlette's router ever
+    # gets a chance to report 404 -- this test is about the 404 envelope
+    # shape specifically, not auth, so it must clear auth first like every
+    # other route the service exposes.
+    response = client.get("/nope")
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "NOT_FOUND"
 

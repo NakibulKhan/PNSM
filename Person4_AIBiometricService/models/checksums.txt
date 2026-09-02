@@ -1,0 +1,5 @@
+# sha256 checksums for the ONNX weights, recorded on first download.
+# Commit this file. A mismatch on a later run means the upstream artifact
+# changed, which invalidates the calibration fitted against it.
+8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4  face_detection_yunet_2023mar.onnx
+9cc6e4a75f0e2bf0b1aed94578f144d15175f357bdc05e815e5c4a02b319eb4f  w600k_mbf.onnx

@@ -48,6 +48,13 @@ def _test_environment() -> Iterator[None]:
             "PNSM_BCRYPT_COST": "4",
             "PNSM_CALIBRATION_PATH": str(CALIBRATION_PATH),
             "PNSM_ALLOW_STUB_MODELS": "true",
+            # See tests/helpers.py's make_settings() for why: build_detector()/
+            # build_embedder() prefer a real model file over the stub whenever
+            # one exists on disk, so the API/contract suites (which build a
+            # Runtime from these env vars, not from make_settings()) need the
+            # same isolation from whatever is actually downloaded into the
+            # real models/ directory for local dev use.
+            "PNSM_MODEL_DIR": str(REPO_ROOT / "tests" / "_stub_models_dir_never_created"),
             "PNSM_WARMUP_ON_START": "true",
             "PNSM_MODEL_VERSION": "stub_v1",
             "PNSM_ADMIN_TOKEN": ADMIN_TOKEN,
