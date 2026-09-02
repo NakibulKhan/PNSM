@@ -1,0 +1,52 @@
+# --- Node (Person1_MobileClient, Person2_WebDashboard, Person3_BackendAPI) ---
+node_modules/
+dist/
+dist-ssr/
+build/
+*.tsbuildinfo
+coverage/
+test-results/
+playwright-report/
+npm-debug.log*
+*.log
+
+# --- Python (Person4_AIBiometricService) ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# --- Secrets (all quadrants) ---
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# --- Person4-specific sensitive/generated data ---
+calibration/dataset/
+calibration/*.png
+!calibration/calibration.json
+models/*.onnx
+!models/checksums.txt
+!models/README.md
+deploy/rendered/
+
+# --- Build tool caches ---
+.vite/
+.next/
+.turbo/
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
