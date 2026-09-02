@@ -1,0 +1,25 @@
+{
+  "calibration_version": "bootstrap-2026-08-26",
+  "model_version": "arcface_w600k_mbf_v1",
+  "logistic": {
+    "a": 18.0,
+    "b": 0.42
+  },
+  "bands": {
+    "approve": 85.0,
+    "flag": 60.0
+  },
+  "measured": {
+    "identities": 0,
+    "images": 0,
+    "genuine_pairs": 0,
+    "impostor_pairs": 0,
+    "far": null,
+    "frr": null,
+    "tar_at_far_1pct": null,
+    "preprocess_fingerprint": "79c66c37458b41d6",
+    "provenance": "BOOTSTRAP - literature defaults, NOT measured. Replace before the demo."
+  },
+  "fitted_at": "2026-08-26T00:00:00Z",
+  "notes": "Bootstrap only. Run `python calibration/build_calibration.py` on the team dataset to replace this."
+}

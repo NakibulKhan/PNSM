@@ -1,0 +1,121 @@
+{
+  "_comment": [
+    "Resource policy on the SELFIE bucket. Applied with:",
+    "  aws s3api put-bucket-policy --bucket <SELFIE_BUCKET> \\",
+    "      --policy file://deploy/iam/selfie-bucket-policy.json",
+    "",
+    "Every statement here is a Deny. That is deliberate: the identity policies",
+    "grant access, and this file's only job is to make certain classes of",
+    "mistake impossible no matter what an identity policy says. An explicit",
+    "Deny in a resource policy cannot be overridden by any Allow, including one",
+    "an administrator adds later in a hurry.",
+    "",
+    "Block Public Access is also enabled on this bucket. Both, because they",
+    "fail differently: BPA is an account/bucket setting somebody can toggle off",
+    "in the console in two clicks, while this travels with the bucket policy",
+    "and shows up in a diff."
+  ],
+
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "DenyInsecureTransport",
+      "_comment": "Master plan: TLS 1.2+ for all transit. Anything over plain HTTP is refused outright.",
+      "Effect": "Deny",
+      "Principal": "*",
+      "Action": "s3:*",
+      "Resource": [
+        "arn:aws:s3:::<SELFIE_BUCKET>",
+        "arn:aws:s3:::<SELFIE_BUCKET>/*"
+      ],
+      "Condition": {
+        "Bool": { "aws:SecureTransport": "false" }
+      }
+    },
+    {
+      "Sid": "DenyOutdatedTlsVersions",
+      "_comment": [
+        "aws:SecureTransport is true for TLS 1.0 as well. This closes that gap",
+        "and is what actually implements 'TLS 1.2+' rather than merely 'TLS'."
+      ],
+      "Effect": "Deny",
+      "Principal": "*",
+      "Action": "s3:*",
+      "Resource": [
+        "arn:aws:s3:::<SELFIE_BUCKET>",
+        "arn:aws:s3:::<SELFIE_BUCKET>/*"
+      ],
+      "Condition": {
+        "NumericLessThan": { "s3:TlsVersion": "1.2" }
+      }
+    },
+    {
+      "Sid": "DenyUnencryptedObjectUploads",
+      "_comment": [
+        "The bucket has a default encryption rule, so an upload with no",
+        "encryption header is encrypted anyway and this statement never fires",
+        "in normal operation. It exists for the case where somebody explicitly",
+        "asks for something weaker: `x-amz-server-side-encryption: AES256` is",
+        "SSE-S3, which is real encryption but is NOT attributable in CloudTrail",
+        "and cannot be revoked by disabling a key. For biometric data that",
+        "distinction is the whole reason SSE-KMS was chosen."
+      ],
+      "Effect": "Deny",
+      "Principal": "*",
+      "Action": "s3:PutObject",
+      "Resource": "arn:aws:s3:::<SELFIE_BUCKET>/*",
+      "Condition": {
+        "StringNotEquals": {
+          "s3:x-amz-server-side-encryption": "aws:kms"
+        },
+        "Null": {
+          "s3:x-amz-server-side-encryption": "false"
+        }
+      }
+    },
+    {
+      "Sid": "DenyWrongKmsKey",
+      "_comment": [
+        "Encrypting with a key outside this project would put the objects",
+        "beyond the reach of the key policy, the rotation schedule and the",
+        "CloudTrail trail that make them auditable."
+      ],
+      "Effect": "Deny",
+      "Principal": "*",
+      "Action": "s3:PutObject",
+      "Resource": "arn:aws:s3:::<SELFIE_BUCKET>/*",
+      "Condition": {
+        "StringNotEqualsIfExists": {
+          "s3:x-amz-server-side-encryption-aws-kms-key-id": "<KMS_KEY_ARN>"
+        }
+      }
+    },
+    {
+      "Sid": "DenyEveryPrincipalExceptTheProjectRoles",
+      "_comment": [
+        "The containment statement. Only the AI service task role and the",
+        "backend task role may touch a selfie -- not a developer's console",
+        "session, not another service's role, not a future task somebody wires",
+        "up without thinking about it.",
+        "",
+        "NotPrincipal with Deny is a sharp tool and is used carefully here: the",
+        "root ARN is in the exclusion list so the account owner cannot lock",
+        "themselves out of their own bucket, which is an unrecoverable state",
+        "short of contacting AWS support."
+      ],
+      "Effect": "Deny",
+      "NotPrincipal": {
+        "AWS": [
+          "arn:aws:iam::<ACCOUNT_ID>:role/pnsm-ai-svc-task-role",
+          "arn:aws:iam::<ACCOUNT_ID>:role/pnsm-api-task-role",
+          "arn:aws:iam::<ACCOUNT_ID>:root"
+        ]
+      },
+      "Action": "s3:*",
+      "Resource": [
+        "arn:aws:s3:::<SELFIE_BUCKET>",
+        "arn:aws:s3:::<SELFIE_BUCKET>/*"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "preprocess_fingerprint": "79c66c37458b41d6",
+  "tensor_sha256": "d230d6742eb33dfce93e593d30667deb6f49408efc6fbeaa47603f1f2bec806b",
+  "chip_sha256": "021804dad825334aeaf3a731090b5ee1361f65e98d013142608608ff97463bb3",
+  "tensor_shape": [
+    1,
+    3,
+    112,
+    112
+  ],
+  "tensor_mean": 0.509337,
+  "tensor_std": 0.384184
+}

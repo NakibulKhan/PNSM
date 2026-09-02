@@ -1,0 +1,142 @@
+{
+  "_comment": [
+    "Permissions granted to the pnsm-ai-svc CONTAINER (taskRoleArn).",
+    "",
+    "This is the identity the application code runs as. It is the blast radius",
+    "of a remote code execution in the AI service, so it is written as a",
+    "least-privilege allow-list, not a managed policy: AmazonS3FullAccess and",
+    "AWSKeyManagementServicePowerUser would each turn one bug into the whole",
+    "account. Master plan, OWASP A01.",
+    "",
+    "Attach with:",
+    "  aws iam put-role-policy --role-name pnsm-ai-svc-task-role \\",
+    "      --policy-name pnsm-ai-svc-inline \\",
+    "      --policy-document file://deploy/iam/ai-svc-task-role-policy.json",
+    "",
+    "Placeholders in ANGLE BRACKETS are filled by scripts/provision_aws.py."
+  ],
+
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "UnwrapAndMintDataKeysForBiometricEmbeddings",
+      "_comment": [
+        "GenerateDataKey mints a fresh DEK per enrolment; Decrypt unwraps it on",
+        "each check-in. DescribeKey lets the service confirm at boot that the",
+        "CMK exists and is enabled, so a typo'd ARN fails at deploy rather than",
+        "at the first employee's enrolment.",
+        "",
+        "kms:Encrypt is NOT granted. The service never encrypts anything",
+        "directly with the CMK -- envelope encryption means the CMK only ever",
+        "wraps data keys, and GenerateDataKey already does that. Granting an",
+        "operation nothing calls is how an unused permission becomes an",
+        "attacker's primitive.",
+        "",
+        "The EncryptionContext condition is the important line. Without it, a",
+        "stolen wrapped key could be redeemed for ANY employee. With it, KMS",
+        "itself refuses to unwrap unless the caller names the same purpose it",
+        "was wrapped under. app/crypto/keyproviders.py sets this context on",
+        "every call and tests/unit/test_keyproviders.py proves a mismatch is",
+        "refused."
+      ],
+      "Effect": "Allow",
+      "Action": [
+        "kms:GenerateDataKey",
+        "kms:Decrypt",
+        "kms:DescribeKey"
+      ],
+      "Resource": "<KMS_KEY_ARN>",
+      "Condition": {
+        "StringEquals": {
+          "kms:EncryptionContext:purpose": "pnsm-face-embedding"
+        }
+      }
+    },
+    {
+      "Sid": "ServerSideEncryptSelfiesAtRest",
+      "_comment": [
+        "A separate statement because S3 calls KMS on the service's behalf when",
+        "an object is written with SSE-KMS, and those calls carry S3's own",
+        "encryption context (aws:s3:arn), not ours. Folding this into the",
+        "statement above with the purpose condition would make every upload",
+        "fail with an opaque AccessDenied -- a genuinely hard failure to",
+        "diagnose, which is why it is called out here.",
+        "",
+        "The via-service condition keeps the grant narrow: these two actions",
+        "are usable only through S3, never by code calling KMS directly."
+      ],
+      "Effect": "Allow",
+      "Action": [
+        "kms:GenerateDataKey",
+        "kms:Decrypt"
+      ],
+      "Resource": "<KMS_KEY_ARN>",
+      "Condition": {
+        "StringEquals": {
+          "kms:ViaService": "s3.<REGION>.amazonaws.com"
+        }
+      }
+    },
+    {
+      "Sid": "ReadAndPresignSelfieObjects",
+      "_comment": [
+        "Object-level only, scoped to the two prefixes the service actually",
+        "builds: refs/ and checkins/. Those two strings are REF_PREFIX and",
+        "CHECKIN_PREFIX in app/storage/keys.py, and",
+        "tests/deploy/test_manifests.py compares them -- a policy that grants a",
+        "prefix the code never writes produces an AccessDenied on every single",
+        "enrolment, in production, with nothing wrong in either file alone.",
+        "",
+        "No s3:DeleteObject: retention is enforced by a bucket lifecycle rule,",
+        "so the container has no way to erase evidence of a fraudulent check-in.",
+        "",
+        "PutObject is granted because the presigned PUT the mobile client uses",
+        "is signed with THIS role's credentials -- a presigned URL can never",
+        "convey a permission its signer lacks."
+      ],
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject"
+      ],
+      "Resource": [
+        "arn:aws:s3:::<SELFIE_BUCKET>/refs/*",
+        "arn:aws:s3:::<SELFIE_BUCKET>/checkins/*"
+      ]
+    },
+    {
+      "Sid": "ConfirmBucketPostureAtReadiness",
+      "_comment": [
+        "/ready reports the bucket's measured encryption and public-access",
+        "state rather than asserting it (app/runtime.py storage_posture). That",
+        "needs three read-only configuration calls. Bucket-level resource, no",
+        "write actions -- the service can look at the posture and cannot change",
+        "it."
+      ],
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetEncryptionConfiguration",
+        "s3:GetBucketPublicAccessBlock",
+        "s3:GetBucketLocation"
+      ],
+      "Resource": "arn:aws:s3:::<SELFIE_BUCKET>"
+    },
+    {
+      "Sid": "DenyAnythingNotOverTls",
+      "_comment": [
+        "An explicit Deny, which beats any Allow anywhere in the account. Cheap",
+        "insurance against a future endpoint override or an SDK misconfiguration",
+        "putting biometric data on the wire in plaintext. Master plan: TLS 1.2+",
+        "for all transit data."
+      ],
+      "Effect": "Deny",
+      "Action": ["s3:*", "kms:*"],
+      "Resource": "*",
+      "Condition": {
+        "Bool": {
+          "aws:SecureTransport": "false"
+        }
+      }
+    }
+  ]
+}

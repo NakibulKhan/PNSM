@@ -1,0 +1,57 @@
+{
+  "_comment": [
+    "Trust policy for the role GitHub Actions assumes to deploy.",
+    "",
+    "NO ACCESS KEYS. The master plan asks for a CI/CD pipeline that halts on a",
+    "failed audit; storing a long-lived AWS key pair in repository secrets to",
+    "run it would hand an attacker who reads those secrets permanent account",
+    "access. GitHub's OIDC provider issues a short-lived token per workflow run",
+    "instead, and AWS exchanges it for credentials that expire in an hour.",
+    "",
+    "One-time setup of the provider:",
+    "  aws iam create-open-id-connect-provider \\",
+    "      --url https://token.actions.githubusercontent.com \\",
+    "      --client-id-list sts.amazonaws.com \\",
+    "      --thumbprint-list 6938fd4d98bab03faadb97b34396831e3780aea1",
+    "",
+    "Then:",
+    "  aws iam create-role --role-name pnsm-github-deploy \\",
+    "      --assume-role-policy-document file://deploy/iam/github-actions-deploy-role.json",
+    "",
+    "The permissions this role gets are in github-actions-deploy-policy.json."
+  ],
+
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "GitHubOidcFromThisRepositoryOnly",
+      "Effect": "Allow",
+      "Principal": {
+        "Federated": "arn:aws:iam::<ACCOUNT_ID>:oidc-provider/token.actions.githubusercontent.com"
+      },
+      "Action": "sts:AssumeRoleWithWebIdentity",
+      "Condition": {
+        "StringEquals": {
+          "_comment_aud": [
+            "Without this audience check any GitHub Actions run in the WORLD",
+            "could assume the role. It is the single most commonly omitted",
+            "line in an OIDC trust policy and the most damaging."
+          ],
+          "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
+        },
+        "StringLike": {
+          "_comment_sub": [
+            "Scoped to this repository and to the branches that are allowed to",
+            "deploy. `repo:org/name:*` would let a pull request from a fork run",
+            "with deployment credentials, which is a well-known supply-chain",
+            "path (OWASP A03) and is exactly what this narrower subject blocks."
+          ],
+          "token.actions.githubusercontent.com:sub": [
+            "repo:<GITHUB_ORG>/<GITHUB_REPO>:ref:refs/heads/main",
+            "repo:<GITHUB_ORG>/<GITHUB_REPO>:environment:production"
+          ]
+        }
+      }
+    }
+  ]
+}

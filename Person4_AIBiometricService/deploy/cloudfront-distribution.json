@@ -1,0 +1,170 @@
+{
+  "_comment": [
+    "CloudFront distribution for the PNSM frontends (Person 2's HR command",
+    "centre and Person 1's mobile web build). Owned by Person 4.",
+    "",
+    "  aws cloudfront create-distribution --cli-input-json file://deploy/cloudfront-distribution.json",
+    "",
+    "Placeholders in ANGLE BRACKETS are filled by scripts/provision_aws.py.",
+    "",
+    "WHAT IS AND IS NOT BEHIND THIS DISTRIBUTION",
+    "",
+    "Behind it: the static SPA bundle in S3. Immutable, fingerprinted, read by",
+    "every visitor -- exactly what an edge cache is for.",
+    "",
+    "NOT behind it: the selfie bucket. Selfies are private personal data with a",
+    "90-day retention, read a handful of times by HR and never by the public.",
+    "Caching them at 400+ edge locations would spread biometric images across",
+    "the world to save a latency nobody is waiting on, and an invalidation is",
+    "not a deletion. They stay in S3 behind short-lived presigned URLs.",
+    "See docs/DECISIONS.md D-14.",
+    "",
+    "NOT behind it: the API. Every route is authenticated, uncacheable and",
+    "mutating; an edge cache in front of /v1/verify is a correctness hazard,",
+    "not an optimisation.",
+    "",
+    "SHAPE: create-distribution takes {\"DistributionConfig\": {...}}, not the",
+    "config fields at the top level. It is the one CLI input in this directory",
+    "that is wrapped, and a flat file is rejected with a message that names a",
+    "missing parameter rather than the missing wrapper."
+  ],
+  "DistributionConfig": {
+    "CallerReference": "<CALLER_REFERENCE>",
+    "Comment": "PNSM frontends - SPA over S3 with origin access control",
+    "Enabled": true,
+    "PriceClass": "PriceClass_200",
+    "HttpVersion": "http2and3",
+    "IsIPV6Enabled": true,
+    "DefaultRootObject": "index.html",
+    "Origins": {
+      "Quantity": 1,
+      "Items": [
+        {
+          "Id": "pnsm-web-s3",
+          "DomainName": "<WEB_BUCKET>.s3.<REGION>.amazonaws.com",
+          "_comment_oac": [
+            "S3OriginConfig with an empty OriginAccessIdentity plus an",
+            "OriginAccessControlId is the modern pattern: the bucket stays fully",
+            "private with Block Public Access on, and only this distribution can",
+            "read it (SigV4-signed origin requests). The legacy alternative --",
+            "an S3 website endpoint -- requires a public bucket, which is",
+            "precisely the misconfiguration OWASP A02 is about."
+          ],
+          "OriginAccessControlId": "<ORIGIN_ACCESS_CONTROL_ID>",
+          "S3OriginConfig": {
+            "OriginAccessIdentity": ""
+          },
+          "ConnectionAttempts": 3,
+          "ConnectionTimeout": 10
+        }
+      ]
+    },
+    "DefaultCacheBehavior": {
+      "TargetOriginId": "pnsm-web-s3",
+      "ViewerProtocolPolicy": "redirect-to-https",
+      "AllowedMethods": {
+        "Quantity": 2,
+        "Items": [
+          "GET",
+          "HEAD"
+        ],
+        "CachedMethods": {
+          "Quantity": 2,
+          "Items": [
+            "GET",
+            "HEAD"
+          ]
+        }
+      },
+      "Compress": true,
+      "_comment_policies": [
+        "AWS managed policy ids, stable across accounts:",
+        "  658327ea-f89d-4fab-a63d-7e88639e58f6  CachingOptimized",
+        "  67f7725c-6f97-4210-82d7-5512b31e9d03  SecurityHeadersPolicy",
+        "CachingOptimized forwards no cookies and no query string, which is",
+        "right for a static bundle and also means no per-user data can end up",
+        "in a shared cache entry."
+      ],
+      "CachePolicyId": "658327ea-f89d-4fab-a63d-7e88639e58f6",
+      "ResponseHeadersPolicyId": "<RESPONSE_HEADERS_POLICY_ID>",
+      "FunctionAssociations": {
+        "Quantity": 0
+      },
+      "LambdaFunctionAssociations": {
+        "Quantity": 0
+      }
+    },
+    "_comment_custom_errors": [
+      "THE SPA REWRITE. This is the piece most deployments get wrong.",
+      "",
+      "React Router owns paths like /dashboard/geofences. No such object exists",
+      "in the bucket, so S3 answers 404 -- or 403, which is what a private",
+      "bucket behind OAC actually returns, because ListBucket is not granted and",
+      "S3 will not confirm whether the key exists. Both must be rewritten to",
+      "index.html with a 200, or every deep link and every browser refresh shows",
+      "an error page.",
+      "",
+      "403 is listed FIRST on purpose: with Block Public Access and an OAC-only",
+      "bucket policy, 403 is the response you will actually see. A config that",
+      "handles only 404 looks correct in review and fails in production.",
+      "",
+      "ErrorCachingMinTTL is 10, not 0: a genuinely missing asset should not",
+      "hammer the origin, but a stale rewrite must not survive a deploy either.",
+      "",
+      "500-class errors are deliberately NOT rewritten. Turning an origin",
+      "failure into a 200 page of HTML hides an outage from every monitor that",
+      "watches status codes."
+    ],
+    "CustomErrorResponses": {
+      "Quantity": 2,
+      "Items": [
+        {
+          "ErrorCode": 403,
+          "ResponsePagePath": "/index.html",
+          "ResponseCode": "200",
+          "ErrorCachingMinTTL": 10
+        },
+        {
+          "ErrorCode": 404,
+          "ResponsePagePath": "/index.html",
+          "ResponseCode": "200",
+          "ErrorCachingMinTTL": 10
+        }
+      ]
+    },
+    "_comment_tls": [
+      "MinimumProtocolVersion TLSv1.2_2021 is the master plan's 'TLS 1.2+',",
+      "enforced at the edge rather than assumed. The certificate comes from AWS",
+      "Certificate Manager and MUST be issued in us-east-1 -- CloudFront reads",
+      "certificates from that region only, whatever region the rest of the stack",
+      "lives in. This is the single most common CloudFront provisioning failure.",
+      "sni-only avoids the dedicated-IP charge and is supported by every browser",
+      "and WebView this project targets."
+    ],
+    "ViewerCertificate": {
+      "ACMCertificateArn": "<ACM_CERT_ARN_US_EAST_1>",
+      "SSLSupportMethod": "sni-only",
+      "MinimumProtocolVersion": "TLSv1.2_2021",
+      "CertificateSource": "acm"
+    },
+    "Aliases": {
+      "Quantity": 1,
+      "Items": [
+        "<WEB_DOMAIN>"
+      ]
+    },
+    "Logging": {
+      "Enabled": true,
+      "IncludeCookies": false,
+      "Bucket": "<LOG_BUCKET>.s3.amazonaws.com",
+      "Prefix": "cloudfront/web/"
+    },
+    "Restrictions": {
+      "GeoRestriction": {
+        "RestrictionType": "none",
+        "Quantity": 0
+      }
+    },
+    "WebACLId": "<WAF_WEB_ACL_ARN_OR_EMPTY>"
+  }
+}

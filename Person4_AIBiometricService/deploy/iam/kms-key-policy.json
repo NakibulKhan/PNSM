@@ -1,0 +1,123 @@
+{
+  "_comment": [
+    "Key policy for the biometric CMK -- the key that, in the master plan's",
+    "words, keeps the embeddings 'mathematically indecipherable without the",
+    "distinct encryption keys held securely within the AWS Key Management",
+    "Service'.",
+    "",
+    "  aws kms create-key --policy file://deploy/iam/kms-key-policy.json \\",
+    "      --description 'PNSM biometric embedding CMK' \\",
+    "      --key-usage ENCRYPT_DECRYPT --key-spec SYMMETRIC_DEFAULT",
+    "",
+    "A KMS key policy is not like other resource policies: it is the ROOT of",
+    "authority for the key. If the account root is not granted here, IAM",
+    "policies elsewhere in the account grant nothing at all, and the key",
+    "becomes unmanageable. That is what the first statement is for -- it is not",
+    "boilerplate, and removing it is unrecoverable."
+  ],
+
+  "Version": "2012-10-17",
+  "Id": "pnsm-biometric-cmk",
+  "Statement": [
+    {
+      "Sid": "EnableIamPoliciesForThisAccount",
+      "Effect": "Allow",
+      "Principal": { "AWS": "arn:aws:iam::<ACCOUNT_ID>:root" },
+      "Action": "kms:*",
+      "Resource": "*"
+    },
+    {
+      "Sid": "KeyAdministratorsCannotReadData",
+      "_comment": [
+        "Separation of duties. The administrator can rotate, tag, schedule",
+        "deletion and audit the key; the administrator cannot Decrypt with it.",
+        "For a key protecting biometric data that split is the point: managing",
+        "the key and reading employees' faces are different jobs, and nobody",
+        "should hold both by default."
+      ],
+      "Effect": "Allow",
+      "Principal": { "AWS": "arn:aws:iam::<ACCOUNT_ID>:role/pnsm-kms-admin" },
+      "Action": [
+        "kms:Create*",
+        "kms:Describe*",
+        "kms:Enable*",
+        "kms:List*",
+        "kms:Put*",
+        "kms:Update*",
+        "kms:Revoke*",
+        "kms:Disable*",
+        "kms:Get*",
+        "kms:Delete*",
+        "kms:TagResource",
+        "kms:UntagResource",
+        "kms:ScheduleKeyDeletion",
+        "kms:CancelKeyDeletion",
+        "kms:EnableKeyRotation"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "AiServiceMayWrapAndUnwrapEmbeddingDataKeys",
+      "_comment": [
+        "The only principal that ever handles a plaintext embedding key. The",
+        "encryption-context condition is enforced here as well as in the task",
+        "role: a key policy condition holds even if somebody later attaches a",
+        "broader identity policy, so this is the copy that actually guarantees",
+        "the property."
+      ],
+      "Effect": "Allow",
+      "Principal": { "AWS": "arn:aws:iam::<ACCOUNT_ID>:role/pnsm-ai-svc-task-role" },
+      "Action": [
+        "kms:GenerateDataKey",
+        "kms:Decrypt",
+        "kms:DescribeKey"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "kms:EncryptionContext:purpose": "pnsm-face-embedding"
+        }
+      }
+    },
+    {
+      "Sid": "S3MayEncryptSelfiesOnOurBehalf",
+      "_comment": [
+        "Selfies, not embeddings -- a different data path with a different",
+        "encryption context (S3 supplies its own), which is why it needs its own",
+        "statement. Scoped by via-service so this grant is unusable except",
+        "through S3."
+      ],
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": [
+          "arn:aws:iam::<ACCOUNT_ID>:role/pnsm-ai-svc-task-role",
+          "arn:aws:iam::<ACCOUNT_ID>:role/pnsm-api-task-role"
+        ]
+      },
+      "Action": ["kms:GenerateDataKey", "kms:Decrypt"],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "kms:ViaService": "s3.<REGION>.amazonaws.com"
+        }
+      }
+    },
+    {
+      "Sid": "DenyKeyDeletionWithoutMfa",
+      "_comment": [
+        "Scheduling this key for deletion destroys every enrolment in the",
+        "system -- there is no backup of a KMS key material, by design. The",
+        "recovery from that mistake is re-enrolling every employee, so it is",
+        "worth a hardware second factor. Seven to thirty days of pending",
+        "deletion is the only safety net after this point."
+      ],
+      "Effect": "Deny",
+      "Principal": "*",
+      "Action": ["kms:ScheduleKeyDeletion", "kms:DisableKey", "kms:PutKeyPolicy"],
+      "Resource": "*",
+      "Condition": {
+        "BoolIfExists": { "aws:MultiFactorAuthPresent": "false" }
+      }
+    }
+  ]
+}
