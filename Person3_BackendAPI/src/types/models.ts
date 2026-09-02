@@ -29,13 +29,15 @@ export interface RoleDTO {
   permissions: Permissions;
 }
 
-/** Internal only — never returned over the wire. */
+/**
+ * Internal only — never returned over the wire. `envelope` is Person 4's
+ * opaque AES-256-GCM/KMS output, stored verbatim (DECISIONS.md N1/N8) — treat
+ * it as unknown, never parse or reformat it.
+ */
 export interface FaceEmbeddingDTO {
   _id: ObjectIdString;
   user_id: ObjectIdString;
-  /** Ciphertext, not plaintext floats. See services/faceVerification/embeddingCrypto.ts. */
-  vector_data: string;
-  encryption: { algorithm: string; key_id: string | null };
+  envelope: unknown;
   model_version: string;
   created_at: ISODateString;
 }

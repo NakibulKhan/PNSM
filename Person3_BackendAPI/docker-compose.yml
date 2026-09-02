@@ -11,6 +11,11 @@ services:
       JWT_REFRESH_SECRET: dev-only-refresh-secret-change-me
       ADMIN_ALLOWED_ORIGINS: http://localhost:3000
       FACE_SERVICE_PROVIDER: mock
+      # Person 4's AI service (DECISIONS.md N1/N2/N7) — local dev-complete runs
+      # it alongside this backend via its own docker-compose; PNSM_AI_URL here
+      # assumes the two compose projects share a network (see ROADMAP.md Phase 5).
+      PNSM_AI_URL: http://ai-service:8000
+      PNSM_HMAC_SECRET: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
     depends_on:
       - mongo
 
@@ -21,5 +26,22 @@ services:
     volumes:
       - mongo-data:/data/db
 
+  # S3-compatible local object store, standing in for R2/AWS S3 (DECISIONS.md
+  # B3/B4/N7). Person 4's AI service is the only thing that talks to this
+  # directly (it owns presigning) — this backend never touches bucket
+  # credentials itself, per DECISIONS.md N2.
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: pnsm-dev
+      MINIO_ROOT_PASSWORD: pnsm-dev-secret
+    volumes:
+      - minio-data:/data
+
 volumes:
   mongo-data:
+  minio-data:

@@ -78,7 +78,11 @@ describe('admin auth routes', () => {
         }),
       });
 
-      const res = await request(app).post('/api/auth/login').send({ email: 'rafiq@company.com', password: 'wrong' });
+      // Must be >= 6 chars — loginSchema's own min-length rule, not the mocked
+      // credential check, would otherwise reject this before it exercises the
+      // path this test is actually for (never caught before: this suite had
+      // never been run).
+      const res = await request(app).post('/api/auth/login').send({ email: 'rafiq@company.com', password: 'wrongpw' });
       expect(res.status).toBe(401);
       expect(res.body.data).toBeNull();
       expect(res.body.error.code).toBe('INVALID_CREDENTIALS');

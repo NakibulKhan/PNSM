@@ -12,8 +12,17 @@ const userSchema = new Schema(
     name: { type: String, required: true, trim: true },
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
     password_hash: { type: String, required: true, select: false },
-    /** 4-digit 2FA PIN hash. Set by Admin/HR at onboarding — see architecture report §4. */
+    /**
+     * 4-digit 2FA PIN, hashed and peppered by Person 4's AI service
+     * (`POST /v1/security/pin/hash`) — never hashed locally (DECISIONS.md N1).
+     * `pin_algo`/`pin_cost`/`pin_pepper_version` are stored verbatim from that
+     * response so Person 4's service can be given the right pepper version
+     * back on verify. Set by Admin/HR at onboarding.
+     */
     pin_hash: { type: String, select: false },
+    pin_algo: { type: String, select: false, default: null },
+    pin_cost: { type: Number, select: false, default: null },
+    pin_pepper_version: { type: String, select: false, default: null },
     role_id: { type: Schema.Types.ObjectId, ref: 'Role', required: true },
     phone: { type: String, default: '' },
     employee_code: { type: String, unique: true, sparse: true, trim: true },
@@ -34,6 +43,9 @@ export interface UserDocumentLean {
   email: string;
   password_hash?: string;
   pin_hash?: string;
+  pin_algo?: string | null;
+  pin_cost?: number | null;
+  pin_pepper_version?: string | null;
   role_id: Types.ObjectId;
   phone: string;
   employee_code?: string;

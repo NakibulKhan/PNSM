@@ -25,7 +25,7 @@ function toSessionUser(user: {
   _id: unknown;
   name: string;
   email: string;
-  reference_photo_url: string | null;
+  reference_photo_url?: string | null;
 }, roleName: string): SessionUserDTO {
   return {
     _id: String(user._id),
