@@ -57,7 +57,13 @@ known-first-party = ["app", "calibration", "clients", "scripts", "tests"]
 "calibration/**" = ["S101"]
 
 [tool.mypy]
-python_version = "3.11"
+# NOT a floor change -- requires-python above is still ">=3.11" and nothing in
+# app/ uses 3.12-only syntax. This only tells mypy's parser to accept PEP 695
+# `type X = ...` aliases, which numpy's own installed stubs (2.5.2, resolved
+# from the unpinned `numpy>=1.26,<3.0` range) use -- mypy refuses to parse
+# ANY file at "3.11" once a dependency's stub needs 3.12 grammar, third-party
+# code included. First real `mypy` run for this project surfaced this.
+python_version = "3.12"
 files = ["app"]
 strict_optional = true
 warn_redundant_casts = true

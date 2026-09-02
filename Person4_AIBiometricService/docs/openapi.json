@@ -1,0 +1,2000 @@
+{
+  "components": {
+    "schemas": {
+      "DeviceModel": {
+        "additionalProperties": false,
+        "properties": {
+          "app_version": {
+            "default": "",
+            "maxLength": 32,
+            "title": "App Version",
+            "type": "string"
+          },
+          "is_emulator": {
+            "default": false,
+            "title": "Is Emulator",
+            "type": "boolean"
+          },
+          "is_mock_location": {
+            "default": false,
+            "description": "Android Location.isFromMockProvider() / iOS CLLocation.isSimulated.",
+            "title": "Is Mock Location",
+            "type": "boolean"
+          },
+          "is_rooted": {
+            "default": false,
+            "title": "Is Rooted",
+            "type": "boolean"
+          },
+          "os_version": {
+            "default": "",
+            "maxLength": 32,
+            "title": "Os Version",
+            "type": "string"
+          },
+          "platform": {
+            "default": "unknown",
+            "enum": [
+              "android",
+              "ios",
+              "web",
+              "unknown"
+            ],
+            "title": "Platform",
+            "type": "string"
+          }
+        },
+        "title": "DeviceModel",
+        "type": "object"
+      },
+      "EmbedRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "image": {
+            "$ref": "#/components/schemas/ImageRefModel"
+          },
+          "request_id": {
+            "maxLength": 26,
+            "minLength": 26,
+            "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "user_ref": {
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "title": "User Ref",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_ref",
+          "image",
+          "request_id"
+        ],
+        "title": "EmbedRequest",
+        "type": "object"
+      },
+      "EmbedResponse": {
+        "properties": {
+          "envelope": {
+            "$ref": "#/components/schemas/EnvelopeModel"
+          },
+          "model_version": {
+            "title": "Model Version",
+            "type": "string"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "quality": {
+            "$ref": "#/components/schemas/QualityModel"
+          },
+          "storage_target": {
+            "$ref": "#/components/schemas/StorageTargetModel"
+          },
+          "timings_ms": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Timings Ms",
+            "type": "object"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ok",
+          "envelope",
+          "storage_target",
+          "quality",
+          "warnings",
+          "model_version",
+          "timings_ms"
+        ],
+        "title": "EmbedResponse",
+        "type": "object"
+      },
+      "EnvelopeModel": {
+        "additionalProperties": true,
+        "description": "The encrypted embedding, exactly as returned by /v1/embed.\n\n``extra='allow'`` on purpose: Person 3 stores this verbatim in MongoDB and\nmay hand it back with driver-added metadata attached. Unknown keys are\nignored rather than rejected, so a future envelope field does not break\nolder readers.",
+        "properties": {
+          "alg": {
+            "description": "Always 'AES-256-GCM'.",
+            "title": "Alg",
+            "type": "string"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "RFC 3339 timestamp.",
+            "title": "Created At"
+          },
+          "ct": {
+            "description": "Base64 ciphertext.",
+            "title": "Ct",
+            "type": "string"
+          },
+          "dek": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Base64 KMS-wrapped data encryption key. Present only under the 'kms' provider.",
+            "title": "Dek"
+          },
+          "iv": {
+            "description": "Base64 96-bit nonce.",
+            "title": "Iv",
+            "type": "string"
+          },
+          "kp": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Key provider that sealed this envelope: 'kms' or 'static'. Absent on v1.",
+            "title": "Kp"
+          },
+          "kv": {
+            "description": "Key id or version used to encrypt.",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Kv",
+            "type": "string"
+          },
+          "model_version": {
+            "description": "Model that produced the vector.",
+            "title": "Model Version",
+            "type": "string"
+          },
+          "tag": {
+            "description": "Base64 128-bit GCM authentication tag.",
+            "title": "Tag",
+            "type": "string"
+          },
+          "v": {
+            "description": "Envelope schema version. 1 = static key, 2 = key provider aware.",
+            "title": "V",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "v",
+          "kv",
+          "alg",
+          "iv",
+          "ct",
+          "tag",
+          "model_version"
+        ],
+        "title": "EnvelopeModel",
+        "type": "object"
+      },
+      "ErrorBody": {
+        "properties": {
+          "code": {
+            "description": "A member of the reason-code table.",
+            "title": "Code",
+            "type": "string"
+          },
+          "context": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context"
+          },
+          "message": {
+            "description": "Safe to show an end user.",
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Id"
+          },
+          "retryable": {
+            "title": "Retryable",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "retryable"
+        ],
+        "title": "ErrorBody",
+        "type": "object"
+      },
+      "ErrorResponse": {
+        "properties": {
+          "error": {
+            "$ref": "#/components/schemas/ErrorBody"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "title": "ErrorResponse",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "HealthResponse": {
+        "properties": {
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "uptime_s": {
+            "title": "Uptime S",
+            "type": "number"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "version",
+          "uptime_s"
+        ],
+        "title": "HealthResponse",
+        "type": "object"
+      },
+      "ImageRefModel": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "description": "'s3_key' for an object already uploaded to the bucket; 'base64' for inline bytes (development and tests). 'r2_key' is the pre-AWS spelling of 's3_key', still accepted during the migration.",
+            "enum": [
+              "s3_key",
+              "r2_key",
+              "base64"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "value": {
+            "description": "Object key or base64 payload.",
+            "maxLength": 1400000,
+            "minLength": 1,
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "value"
+        ],
+        "title": "ImageRefModel",
+        "type": "object"
+      },
+      "PinHashRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "pin": {
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Pin",
+            "type": "string"
+          },
+          "user_ref": {
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "title": "User Ref",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_ref",
+          "pin"
+        ],
+        "title": "PinHashRequest",
+        "type": "object"
+      },
+      "PinHashResponse": {
+        "properties": {
+          "algo": {
+            "title": "Algo",
+            "type": "string"
+          },
+          "cost": {
+            "title": "Cost",
+            "type": "integer"
+          },
+          "pepper_version": {
+            "title": "Pepper Version",
+            "type": "string"
+          },
+          "pin_hash": {
+            "title": "Pin Hash",
+            "type": "string"
+          }
+        },
+        "required": [
+          "pin_hash",
+          "algo",
+          "cost",
+          "pepper_version"
+        ],
+        "title": "PinHashResponse",
+        "type": "object"
+      },
+      "PinVerifyRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "pin": {
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Pin",
+            "type": "string"
+          },
+          "pin_hash": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Pin Hash",
+            "type": "string"
+          },
+          "user_ref": {
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "title": "User Ref",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_ref",
+          "pin",
+          "pin_hash"
+        ],
+        "title": "PinVerifyRequest",
+        "type": "object"
+      },
+      "PinVerifyResponse": {
+        "properties": {
+          "attempts_left": {
+            "title": "Attempts Left",
+            "type": "integer"
+          },
+          "locked": {
+            "title": "Locked",
+            "type": "boolean"
+          },
+          "match": {
+            "title": "Match",
+            "type": "boolean"
+          },
+          "retry_after_s": {
+            "title": "Retry After S",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "match",
+          "locked",
+          "attempts_left",
+          "retry_after_s"
+        ],
+        "title": "PinVerifyResponse",
+        "type": "object"
+      },
+      "PresignGetRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "object_key": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Object Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "object_key"
+        ],
+        "title": "PresignGetRequest",
+        "type": "object"
+      },
+      "PresignGetResponse": {
+        "properties": {
+          "download_url": {
+            "title": "Download Url",
+            "type": "string"
+          },
+          "expires_at": {
+            "title": "Expires At",
+            "type": "string"
+          },
+          "method": {
+            "title": "Method",
+            "type": "string"
+          },
+          "object_key": {
+            "title": "Object Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "download_url",
+          "method",
+          "object_key",
+          "expires_at"
+        ],
+        "title": "PresignGetResponse",
+        "type": "object"
+      },
+      "PresignPutRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "content_length": {
+            "exclusiveMinimum": 0.0,
+            "maximum": 5242880.0,
+            "title": "Content Length",
+            "type": "integer"
+          },
+          "content_type": {
+            "enum": [
+              "image/webp",
+              "image/jpeg"
+            ],
+            "title": "Content Type",
+            "type": "string"
+          },
+          "object_id": {
+            "maxLength": 26,
+            "minLength": 26,
+            "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+            "title": "Object Id",
+            "type": "string"
+          },
+          "purpose": {
+            "enum": [
+              "reference",
+              "checkin"
+            ],
+            "title": "Purpose",
+            "type": "string"
+          },
+          "user_ref": {
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "title": "User Ref",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_ref",
+          "purpose",
+          "object_id",
+          "content_type",
+          "content_length"
+        ],
+        "title": "PresignPutRequest",
+        "type": "object"
+      },
+      "PresignPutResponse": {
+        "properties": {
+          "expires_at": {
+            "title": "Expires At",
+            "type": "string"
+          },
+          "headers": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Headers",
+            "type": "object"
+          },
+          "max_bytes": {
+            "title": "Max Bytes",
+            "type": "integer"
+          },
+          "method": {
+            "title": "Method",
+            "type": "string"
+          },
+          "object_key": {
+            "title": "Object Key",
+            "type": "string"
+          },
+          "upload_url": {
+            "title": "Upload Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "upload_url",
+          "method",
+          "headers",
+          "object_key",
+          "expires_at",
+          "max_bytes"
+        ],
+        "title": "PresignPutResponse",
+        "type": "object"
+      },
+      "QualityModel": {
+        "properties": {
+          "blur_var": {
+            "title": "Blur Var",
+            "type": "number"
+          },
+          "brightness": {
+            "title": "Brightness",
+            "type": "number"
+          },
+          "det_score": {
+            "title": "Det Score",
+            "type": "number"
+          },
+          "face_area_ratio": {
+            "title": "Face Area Ratio",
+            "type": "number"
+          },
+          "faces_found": {
+            "title": "Faces Found",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "det_score",
+          "blur_var",
+          "face_area_ratio",
+          "brightness",
+          "faces_found"
+        ],
+        "title": "QualityModel",
+        "type": "object"
+      },
+      "ReadyResponse": {
+        "properties": {
+          "aws": {
+            "additionalProperties": true,
+            "description": "Region, bucket, and the measured bucket encryption and public-access posture.",
+            "title": "Aws",
+            "type": "object"
+          },
+          "calibration_version": {
+            "title": "Calibration Version",
+            "type": "string"
+          },
+          "model_version": {
+            "title": "Model Version",
+            "type": "string"
+          },
+          "preprocess_fingerprint": {
+            "title": "Preprocess Fingerprint",
+            "type": "string"
+          },
+          "security": {
+            "additionalProperties": true,
+            "description": "Key provider, decision band model, and the applied response-header policy.",
+            "title": "Security",
+            "type": "object"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "storage": {
+            "title": "Storage",
+            "type": "string"
+          },
+          "thresholds": {
+            "additionalProperties": true,
+            "title": "Thresholds",
+            "type": "object"
+          },
+          "warm": {
+            "title": "Warm",
+            "type": "boolean"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "status",
+          "model_version",
+          "calibration_version",
+          "preprocess_fingerprint",
+          "storage",
+          "warm",
+          "thresholds",
+          "warnings",
+          "security",
+          "aws"
+        ],
+        "title": "ReadyResponse",
+        "type": "object"
+      },
+      "StorageTargetModel": {
+        "description": "Where Person 3 persists the envelope.",
+        "properties": {
+          "collection": {
+            "description": "Always 'FaceEmbeddings' -- never the Users document.",
+            "title": "Collection",
+            "type": "string"
+          },
+          "link_field": {
+            "description": "Field on that document linking back to the employee.",
+            "title": "Link Field",
+            "type": "string"
+          }
+        },
+        "required": [
+          "collection",
+          "link_field"
+        ],
+        "title": "StorageTargetModel",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "VerifyRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "captured_at": {
+            "description": "RFC 3339 capture time from the device.",
+            "format": "date-time",
+            "title": "Captured At",
+            "type": "string"
+          },
+          "device": {
+            "$ref": "#/components/schemas/DeviceModel"
+          },
+          "envelope": {
+            "$ref": "#/components/schemas/EnvelopeModel"
+          },
+          "image": {
+            "$ref": "#/components/schemas/ImageRefModel"
+          },
+          "request_id": {
+            "maxLength": 26,
+            "minLength": 26,
+            "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "user_ref": {
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "title": "User Ref",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_ref",
+          "image",
+          "envelope",
+          "request_id",
+          "captured_at"
+        ],
+        "title": "VerifyRequest",
+        "type": "object"
+      },
+      "VerifyResponse": {
+        "properties": {
+          "capture_skew_s": {
+            "title": "Capture Skew S",
+            "type": "number"
+          },
+          "confidence": {
+            "description": "Calibrated confidence, the FR-07 number.",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "decision": {
+            "enum": [
+              "approved",
+              "flagged",
+              "rejected"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "hr_alert": {
+            "description": "True when Person 3 should push a WebSocket alert to the HR dashboard.",
+            "title": "Hr Alert",
+            "type": "boolean"
+          },
+          "image_hash": {
+            "title": "Image Hash",
+            "type": "string"
+          },
+          "latency_ms": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Latency Ms",
+            "type": "object"
+          },
+          "model_version": {
+            "title": "Model Version",
+            "type": "string"
+          },
+          "quality": {
+            "$ref": "#/components/schemas/QualityModel"
+          },
+          "raw_cosine": {
+            "description": "Audit trail. Never shown to employees.",
+            "maximum": 1.0,
+            "minimum": -1.0,
+            "title": "Raw Cosine",
+            "type": "number"
+          },
+          "reason_code": {
+            "title": "Reason Code",
+            "type": "string"
+          },
+          "threshold": {
+            "additionalProperties": true,
+            "title": "Threshold",
+            "type": "object"
+          }
+        },
+        "required": [
+          "decision",
+          "confidence",
+          "raw_cosine",
+          "threshold",
+          "reason_code",
+          "hr_alert",
+          "quality",
+          "model_version",
+          "image_hash",
+          "capture_skew_s",
+          "latency_ms"
+        ],
+        "title": "VerifyResponse",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "contact": {
+      "email": "pnsm.team@nsu.edu.bd",
+      "name": "Person 4 - AI, Security & DevOps"
+    },
+    "description": "\nAI biometrics, cryptography and cloud DevOps service for the **PNSM Workforce\nAttendance & Management System** (CSE482L, Group 8). Owned by Person 4.\n\nThis service is the only component that ever holds a plaintext face embedding\nor the field-encryption key. Person 3's backend calls it over HTTP and stores\nthe opaque envelope it returns.\n\n**Authentication.** Every route except `/health`, `/ready` and this\ndocumentation requires two headers:\n\n```\nX-PNSM-Timestamp: <unix seconds>\nX-PNSM-Signature: v1=<hex HMAC-SHA256 of \"timestamp.body\">\n```\n\n**Confidence is calibrated.** `confidence` is not `cosine * 100`. ArcFace does\nnot put genuine pairs above 0.85 raw cosine, so a raw threshold would reject\nnearly every real employee. See `docs/CALIBRATION.md`.\n",
+    "title": "PNSM AI, Security & DevOps Service",
+    "version": "1.0.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/health": {
+      "get": {
+        "description": "Cheap liveness check used by the container HEALTHCHECK, the ECS health check and any external uptime monitor. Never touches the model.",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse",
+                  "additionalProperties": true,
+                  "title": "Response Health Health Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Liveness probe",
+        "tags": [
+          "ops"
+        ]
+      }
+    },
+    "/metrics": {
+      "get": {
+        "description": "Operator-only. Used by the CI memory gate.",
+        "operationId": "metrics_metrics_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-pnsm-admin",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Pnsm-Admin",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Metrics Metrics Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Counters, latency summary and resident memory",
+        "tags": [
+          "ops"
+        ]
+      }
+    },
+    "/ready": {
+      "get": {
+        "description": "Reports model, calibration and warmup state. Use this before a demo.",
+        "operationId": "ready_ready_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadyResponse",
+                  "additionalProperties": true,
+                  "title": "Response Ready Ready Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Readiness probe",
+        "tags": [
+          "ops"
+        ]
+      }
+    },
+    "/v1/admin/recalibrate": {
+      "post": {
+        "description": "Re-reads the calibration file and swaps it in atomically. Lets a threshold be corrected during a demo instead of forcing a redeploy and another cold start.\n\nThe preprocessing fingerprint is re-checked: a calibration fitted on a different pipeline is refused rather than silently accepted.",
+        "operationId": "recalibrate_v1_admin_recalibrate_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-pnsm-admin",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Pnsm-Admin",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Recalibrate V1 Admin Recalibrate Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "BAD_REQUEST"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "UNAUTHORIZED - bad or missing HMAC signature"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "MOCK_LOCATION or EMULATOR_DETECTED"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "REPLAY_DETECTED, STALE_CAPTURE, MODEL_VERSION_MISMATCH, NO_REFERENCE_EMBEDDING"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "PAYLOAD_TOO_LARGE"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Quality gate failure or malformed body"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "RATE_LIMITED"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "DECRYPT_FAILED or INTERNAL"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "UPSTREAM_STORAGE_ERROR"
+          }
+        },
+        "summary": "Reload calibration.json without restarting",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/v1/admin/warmup": {
+      "post": {
+        "description": "Run one synthetic inference so the next real check-in does not pay first-call cost.",
+        "operationId": "warmup_v1_admin_warmup_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-pnsm-admin",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Pnsm-Admin",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Warmup V1 Admin Warmup Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "BAD_REQUEST"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "UNAUTHORIZED - bad or missing HMAC signature"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "MOCK_LOCATION or EMULATOR_DETECTED"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "REPLAY_DETECTED, STALE_CAPTURE, MODEL_VERSION_MISMATCH, NO_REFERENCE_EMBEDDING"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "PAYLOAD_TOO_LARGE"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Quality gate failure or malformed body"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "RATE_LIMITED"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "DECRYPT_FAILED or INTERNAL"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "UPSTREAM_STORAGE_ERROR"
+          }
+        },
+        "summary": "Force a warmup inference",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/v1/embed": {
+      "post": {
+        "description": "Takes an onboarding photograph and returns the face embedding **already encrypted**. Store the `envelope` object verbatim on the employee document; do not reformat it, and do not attempt to read it -- the key never leaves this service.\n\nQuality metrics are returned so the onboarding form can reject a poor photo at capture time, while it can still be retaken.",
+        "operationId": "embed_v1_embed_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmbedRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmbedResponse",
+                  "additionalProperties": true,
+                  "title": "Response Embed V1 Embed Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "BAD_REQUEST"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "UNAUTHORIZED - bad or missing HMAC signature"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "MOCK_LOCATION or EMULATOR_DETECTED"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "REPLAY_DETECTED, STALE_CAPTURE, MODEL_VERSION_MISMATCH, NO_REFERENCE_EMBEDDING"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "PAYLOAD_TOO_LARGE"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Quality gate failure or malformed body"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "RATE_LIMITED"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "DECRYPT_FAILED or INTERNAL"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "UPSTREAM_STORAGE_ERROR"
+          }
+        },
+        "summary": "Generate an encrypted reference embedding (FR-01)",
+        "tags": [
+          "biometrics"
+        ]
+      }
+    },
+    "/v1/security/pin/hash": {
+      "post": {
+        "description": "Applies the server-side pepper, then bcrypt. Store the returned record on the employee document. Policy violations (too short, too common, sequential, repeated) come back as `BAD_REQUEST` with a message written for the HR user.",
+        "operationId": "pin_hash_v1_security_pin_hash_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PinHashRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PinHashResponse",
+                  "additionalProperties": true,
+                  "title": "Response Pin Hash V1 Security Pin Hash Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "BAD_REQUEST"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "UNAUTHORIZED - bad or missing HMAC signature"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "MOCK_LOCATION or EMULATOR_DETECTED"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "REPLAY_DETECTED, STALE_CAPTURE, MODEL_VERSION_MISMATCH, NO_REFERENCE_EMBEDDING"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "PAYLOAD_TOO_LARGE"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Quality gate failure or malformed body"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "RATE_LIMITED"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "DECRYPT_FAILED or INTERNAL"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "UPSTREAM_STORAGE_ERROR"
+          }
+        },
+        "summary": "Hash a new employee PIN",
+        "tags": [
+          "security"
+        ]
+      }
+    },
+    "/v1/security/pin/verify": {
+      "post": {
+        "description": "A wrong PIN is a normal outcome and returns `200` with `match: false` plus the remaining attempt budget. Once the budget is spent the account locks and further attempts return `429 RATE_LIMITED` **without** performing a comparison.",
+        "operationId": "pin_verify_v1_security_pin_verify_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PinVerifyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PinVerifyResponse",
+                  "additionalProperties": true,
+                  "title": "Response Pin Verify V1 Security Pin Verify Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "BAD_REQUEST"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "UNAUTHORIZED - bad or missing HMAC signature"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "MOCK_LOCATION or EMULATOR_DETECTED"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "REPLAY_DETECTED, STALE_CAPTURE, MODEL_VERSION_MISMATCH, NO_REFERENCE_EMBEDDING"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "PAYLOAD_TOO_LARGE"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Quality gate failure or malformed body"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "RATE_LIMITED"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "DECRYPT_FAILED or INTERNAL"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "UPSTREAM_STORAGE_ERROR"
+          }
+        },
+        "summary": "Check a submitted PIN, enforcing lockout",
+        "tags": [
+          "security"
+        ]
+      }
+    },
+    "/v1/storage/presign-get": {
+      "post": {
+        "description": "Only keys inside a managed prefix are signed. Traversal attempts are rejected.",
+        "operationId": "presign_get_v1_storage_presign_get_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PresignGetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PresignGetResponse",
+                  "additionalProperties": true,
+                  "title": "Response Presign Get V1 Storage Presign Get Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "BAD_REQUEST"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "UNAUTHORIZED - bad or missing HMAC signature"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "MOCK_LOCATION or EMULATOR_DETECTED"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "REPLAY_DETECTED, STALE_CAPTURE, MODEL_VERSION_MISMATCH, NO_REFERENCE_EMBEDDING"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "PAYLOAD_TOO_LARGE"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Quality gate failure or malformed body"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "RATE_LIMITED"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "DECRYPT_FAILED or INTERNAL"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "UPSTREAM_STORAGE_ERROR"
+          }
+        },
+        "summary": "Short-lived read URL for the HR audit view",
+        "tags": [
+          "storage"
+        ]
+      }
+    },
+    "/v1/storage/presign-put": {
+      "post": {
+        "description": "The object key is built server-side from `user_ref`, `purpose` and `object_id`; a client-supplied key is never accepted.\n\n`content_type` **and the exact `content_length`** are signed into the URL, so the bucket itself rejects a mismatched or oversized upload. Send the compressed byte length you are about to upload, not an estimate.",
+        "operationId": "presign_put_v1_storage_presign_put_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PresignPutRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PresignPutResponse",
+                  "additionalProperties": true,
+                  "title": "Response Presign Put V1 Storage Presign Put Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "BAD_REQUEST"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "UNAUTHORIZED - bad or missing HMAC signature"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "MOCK_LOCATION or EMULATOR_DETECTED"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "REPLAY_DETECTED, STALE_CAPTURE, MODEL_VERSION_MISMATCH, NO_REFERENCE_EMBEDDING"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "PAYLOAD_TOO_LARGE"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Quality gate failure or malformed body"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "RATE_LIMITED"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "DECRYPT_FAILED or INTERNAL"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "UPSTREAM_STORAGE_ERROR"
+          }
+        },
+        "summary": "Short-lived direct-to-bucket upload URL",
+        "tags": [
+          "storage"
+        ]
+      }
+    },
+    "/v1/verify": {
+      "post": {
+        "description": "The hot path. Returns a **decision**, not an exception, whenever a comparison actually completed: `approved` at or above the approve band, `flagged` between the bands, `rejected` below.\n\n`confidence` is the FR-07 number and is a *calibrated* function of cosine similarity, not `cosine * 100` -- see `docs/CALIBRATION.md`. `raw_cosine` is the audit trail and should never be shown to an employee.\n\nDevice flags, capture freshness, request-id reuse and image reuse are all checked before any inference runs.",
+        "operationId": "verify_v1_verify_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VerifyResponse",
+                  "additionalProperties": true,
+                  "title": "Response Verify V1 Verify Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "BAD_REQUEST"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "UNAUTHORIZED - bad or missing HMAC signature"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "MOCK_LOCATION or EMULATOR_DETECTED"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "REPLAY_DETECTED, STALE_CAPTURE, MODEL_VERSION_MISMATCH, NO_REFERENCE_EMBEDDING"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "PAYLOAD_TOO_LARGE"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Quality gate failure or malformed body"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "RATE_LIMITED"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "DECRYPT_FAILED or INTERNAL"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "UPSTREAM_STORAGE_ERROR"
+          }
+        },
+        "summary": "1:1 face verification for a check-in (FR-05, FR-07)",
+        "tags": [
+          "biometrics"
+        ]
+      }
+    }
+  },
+  "tags": [
+    {
+      "description": "Liveness, readiness and metrics.",
+      "name": "ops"
+    },
+    {
+      "description": "Enrolment and 1:1 verification.",
+      "name": "biometrics"
+    },
+    {
+      "description": "PIN hashing and verification with lockout.",
+      "name": "security"
+    },
+    {
+      "description": "Presigned direct-to-bucket transfer.",
+      "name": "storage"
+    },
+    {
+      "description": "Operator-only. Requires `X-PNSM-Admin`.",
+      "name": "admin"
+    }
+  ]
+}

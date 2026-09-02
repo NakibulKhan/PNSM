@@ -55,6 +55,16 @@ def make_settings(**overrides: Any) -> Settings:
         "warmup_on_start": False,
         "admin_token": "test-admin-token",
         "model_version": "stub_v1",
+        # build_detector()/build_embedder() prefer the REAL model whenever the
+        # weight file exists on disk, regardless of allow_stub_models -- that
+        # is the right production default (never silently downgrade to a
+        # meaningless stub just because a flag was left on), but it means
+        # tests must not share `models/`, the same directory a real local dev
+        # checkout downloads real weights into via `python
+        # scripts/fetch_models.py`. Pointing at a path that never exists is
+        # what makes the stub path deterministic regardless of what is or is
+        # not downloaded on the machine running the suite.
+        "model_dir": REPO_ROOT / "tests" / "_stub_models_dir_never_created",
         # The stub detector reports a face filling 36% of the frame; the
         # default enrolment area floor is well below that.
         "min_blur_var": 10.0,

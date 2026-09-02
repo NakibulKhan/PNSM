@@ -96,7 +96,14 @@ class YuNetDetector:
         self._detector.setInputSize((width, height))
         _, raw = self._detector.detect(frame)
         if raw is None:
-            return []
+            # Genuinely reachable at runtime -- cv2.FaceDetectorYN.detect()
+            # returns (retval, None) when no face is found, which is the
+            # common case for a rejected/adversarial frame. The installed cv2
+            # stubs (opencv-python-headless) type the second element as
+            # always-present, which mypy takes literally; the actual C++
+            # binding does not agree. First real `mypy` run against installed
+            # stubs (rather than none at all) surfaced this.
+            return []  # type: ignore[unreachable]
 
         inverse = 1.0 / factor
         results: list[Detection] = []

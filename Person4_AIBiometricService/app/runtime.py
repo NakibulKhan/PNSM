@@ -73,6 +73,24 @@ class Runtime:
             log.warning("startup: %s", warning)
 
         self._calibration = self._load_calibration()
+        provenance = str((self._calibration.measured or {}).get("provenance", ""))
+        if provenance.upper().startswith("BOOTSTRAP"):
+            # ROADMAP.md Phase 2 (local dev-complete): real calibration needs
+            # real employee photos, which are out of scope for this phase
+            # (DECISIONS.md in the merged repo, B3/B4/N-series). The service
+            # still starts -- it can be genuinely useful for wiring and
+            # end-to-end testing -- but every score it produces rests on
+            # literature defaults, not this team's own measured FAR/FRR, and
+            # that must be loud rather than discoverable only by reading
+            # calibration.json.
+            bootstrap_warning = (
+                f"calibration {self._calibration.calibration_version!r} is UNMEASURED "
+                f"({provenance}) -- confidence scores are not calibrated for this team's "
+                "faces. Run `python calibration/build_calibration.py` on real photographs "
+                "before treating any check-in decision as meaningful."
+            )
+            log.warning("startup: %s", bootstrap_warning)
+            self.warnings.append(bootstrap_warning)
 
         detector = build_detector(
             self.settings.det_model_path, allow_stub=self.settings.allow_stub_models
