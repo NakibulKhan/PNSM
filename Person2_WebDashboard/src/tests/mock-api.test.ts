@@ -165,9 +165,17 @@ describe('onboarding', () => {
     const created = body<{
       employee: { name: string; has_face_embedding: boolean };
       generated_pin: string;
+      generated_password: string;
     }>(result);
     expect(created.employee.name).toBe('Test Employee');
     expect(created.employee.has_face_embedding).toBe(true);
     expect(created.generated_pin).toMatch(/^\d{4}$/);
+    // DECISIONS.md N9's sibling finding: the real backend generates and hashes
+    // an initial mobile-login password for every employee but, until this was
+    // fixed, never returned it anywhere an admin console user could see it —
+    // permanently locking every new employee out of the mobile app. The mock
+    // must mirror the real contract or this regression would look "fixed" in
+    // demo mode while still broken against the real backend.
+    expect(created.generated_password).toMatch(/^\d{8}$/);
   });
 });

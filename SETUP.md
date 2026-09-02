@@ -55,6 +55,42 @@ Check everything is up:
 - AI service: `curl http://localhost:8000/health` and `curl http://localhost:8000/ready`
 - MinIO console: http://localhost:9001 (login with the `MINIO_ROOT_USER`/`PASSWORD` from `.env`)
 
+### Bootstrap the first Super Admin (known gap — no signup route exists)
+
+A fresh database has no accounts and no way to create one through the app itself:
+admin accounts are created by an existing admin (by design), and mobile employee
+accounts are created by an admin console user — so a genuinely empty database is a
+chicken-and-egg problem the API alone can't resolve. Insert the first one directly:
+
+```bash
+docker compose exec backend node -e "
+const mongoose = require('mongoose');
+const bcrypt = require('bcryptjs');
+(async () => {
+  await mongoose.connect(process.env.MONGODB_URI || 'mongodb://mongo:27017/pnsm');
+  const roles = mongoose.connection.db.collection('roles');
+  const users = mongoose.connection.db.collection('users');
+  for (const role_name of ['Super Admin', 'Admin', 'Employee']) {
+    await roles.updateOne({ role_name }, { \$setOnInsert: { role_name, permissions: {} } }, { upsert: true });
+  }
+  const role = await roles.findOne({ role_name: 'Super Admin' });
+  const password_hash = await bcrypt.hash('ChangeMe123!', 12);
+  await users.updateOne(
+    { email: 'admin@pnsm.local' },
+    { \$setOnInsert: { name: 'Super Admin', email: 'admin@pnsm.local', password_hash, role_id: role._id, phone: '', department: 'HR', is_active: true, reference_photo_url: null, created_at: new Date(), updated_at: new Date() } },
+    { upsert: true },
+  );
+  console.log('Ready: admin@pnsm.local / ChangeMe123!');
+  await mongoose.disconnect();
+})();
+"
+```
+
+Sign in with `admin@pnsm.local` / `ChangeMe123!`, then change the password from the
+console. This is a real, currently-unclosed gap (DECISIONS.md ROADMAP.md Phase 5 notes
+it explicitly) — a proper fix is a one-time seed script or a guarded first-run signup
+endpoint, neither of which exists yet.
+
 ## 3. Start Person 1 and Person 2 on the host
 
 These are **not** in `docker-compose.yml` — ROADMAP.md's own Phase 5 scope keeps them on
@@ -92,22 +128,25 @@ you're testing):
    or `flagged` (not silently defaulted to a two-band `rejected` — that would mean
    `PNSM_DECISION_BANDS=three` isn't actually reaching the AI service; check `docker
    compose logs ai-service`).
-4. **Review a flagged item.** If step 3 produced a `flagged` decision (a synthetic/
-   placeholder reference photo won't match a synthetic/placeholder check-in selfie well
-   enough for a confident `approved` — expected, not a bug, see ROADMAP.md's scope note
-   on calibration), approve or reject it from the dashboard's review queue and confirm
-   the `AttendanceLog` status updates.
+4. **Review a flagged item.** If step 3 produced a `flagged` decision, approve or
+   reject it from the dashboard's review queue and confirm the `AttendanceLog` status
+   updates. Note that AI-generated (StyleGAN2) test photos tend to land at the extremes
+   — a self-match check-in scores ~100% (`approved`), a genuinely different synthetic
+   identity scores in the low single digits (`rejected`, with no `AttendanceLog`
+   written at all — that's Person 4's documented design, not a bug: see
+   DECISIONS.md N17's note). Landing a real `flagged` result needs a photo pair
+   similar enough to fall between the 60/85 bands, which two independently-generated
+   synthetic faces won't reliably do — real employee photos will.
 
-### What this environment could not itself verify
+### This has been run live, end to end — see DECISIONS.md N10-N17
 
-This step was written and the compose file was checked line-by-line against every
-service's actual `config/env.ts` / `app/config.py` for variable-name correctness, but
-**could not be run end-to-end in the environment this project was built in** — no Docker
-Desktop / Docker Engine was available there (confirmed: `docker --version` reports
-"command not found"). Treat the four containerized services and this walkthrough as
-code-complete and configuration-verified by inspection, not as live-tested, until
-someone runs it on a machine with Docker installed. Every non-Docker piece of this
-project (all four quadrants' own test suites, typecheck, lint, build, and — for Person 1
-and Person 2 — live browser verification) *was* actually run, repeatedly, in that
-environment; this is the one exception, and it is the one exception for a concrete,
-checkable reason (a missing binary), not a shortcut.
+This whole walkthrough, including the bootstrap step above, was executed for real
+against the actual running stack (ROADMAP.md Phase 5) — not just checked by
+inspection. Doing so found and fixed **eight real, previously-invisible bugs**, one of
+them severe enough that the mobile app had never successfully reached this backend at
+any point before (N15 — a router-mounting order bug that silently swallowed the
+entire `/api/mobile/*` family behind admin's auth gate). None of the eight were
+catchable by any test that existed before this pass, because no test in any quadrant
+had ever driven a real cross-service HTTP call before. Full details, root causes, and
+fixes are in [`DECISIONS.md`](./DECISIONS.md)'s N10-N17 entries — read those before
+assuming any part of this pipeline "just works" without checking DECISIONS.md first.

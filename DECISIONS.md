@@ -300,3 +300,202 @@ identically-named but separate hardcoded constant from `constants/index.ts` inst
 so the env var never did anything even before this cleanup.
 
 Backend re-verified after this change: 121/121 tests, clean typecheck, clean build.
+
+### N10 — Express 5's `req.query` is getter-only; `validate.ts` was still assigning to it directly
+
+The first real `docker compose up` against a genuine Express 5 server (ROADMAP.md Phase
+5) turned the web dashboard's "Add employee" flow into a wall of 500s the instant it
+loaded — `GET /api/attendance?status=flagged`, `GET /api/leave?status=pending`,
+`GET /api/dashboard/trend`, `GET /api/attendance/feed` all failed identically. Backend
+logs: `TypeError: Cannot set property query of #<IncomingMessage> which has only a
+getter`, at `middleware/validate.js:24` — `(req[part] as unknown) = result.data;` when
+`part === 'query'`. Express 4 allowed plain reassignment of `req.query`; Express 5
+made it a getter-only accessor with no setter, a breaking change this backend's
+`express: "^5.1.0"` pin already opted into without anyone having actually run a GET
+route with query validation against it before.
+
+**Decision:** for `part === 'query'` specifically, shadow the prototype getter with an
+own data property via `Object.defineProperty(req, 'query', { value: result.data,
+writable: true, enumerable: true, configurable: true })` instead of plain assignment —
+Express's own documented workaround for middleware that needs to replace the parsed
+query wholesale. `body`/`params` assignment is untouched (still works exactly as
+before). Added `tests/unit/validate.test.ts`: a real `express()` app + `supertest`
+(a hand-built mock `req` would not reproduce this — the getter-only behavior comes
+from the real `http.IncomingMessage` prototype), covering the exact regression plus
+that `422` (not `500`) still comes back for an invalid query and that `body`/`params`
+assignment is unaffected. 4 new tests, all passing.
+
+### N11 — Admin reference-photo presign hardcoded a 5MB `content_length`; Person 4's real ceiling is 200KB
+
+`uploadService.ts#presignAdminUpload` requested a presigned PUT URL for `5 * 1024 *
+1024` bytes with a comment explaining why: "the admin console presigns before it knows
+the final byte count." That comment was wrong by the time it was written — 
+`PhotoUpload.tsx` already compresses the file client-side to Person 2's own
+`MAX_UPLOAD_MB = 0.2` budget *before* calling `requestUploadUrl`, so the real
+compressed size is always known at presign time. Person 4's AI service independently
+enforces `PNSM_MAX_UPLOAD_BYTES` (204800 by default — the same 200KB, not a
+coincidence) at presign time and rejects anything over it with `PAYLOAD_TOO_LARGE`
+(413) — so every single admin-console reference-photo upload failed outright,
+regardless of the actual file's real, compressed, well-under-200KB size.
+
+**Decision:** thread the real compressed byte count through instead of guessing.
+`Person2_WebDashboard/src/api/uploads.ts#requestUploadUrl` now takes `contentLength`
+(passed as `result.file.size` from `photo-upload.tsx`, the size *after* compression);
+`Person3_BackendAPI`'s `adminPresignSchema` gained a required `contentLength` field;
+`uploads.routes.ts` and `presignAdminUpload` forward it instead of the hardcoded 5MB.
+This is exactly the pattern the mobile check-in presign flow already used correctly
+(`Person1_MobileClient/src/lib/api.js` sends `blob.size` for real) — the admin path
+was the one inconsistent with its own sibling. Backend 125/125, web dashboard 76/76
+after the fix.
+
+### N12 — Person 3 generates 4-digit PINs; Person 4's default policy requires 6+
+
+Every PIN issuance during live employee creation failed with `PIN must be at least 6
+digits.` (Person 4's `app/crypto/pin.py`, driven by `PNSM_PIN_MIN_LENGTH`, default 6,
+range 4-12). Person 3's `generatePin()` has always produced exactly 4 digits, and
+Person 1's `CheckInScreen.jsx` hardcodes `pin.length === 4` as its submit gate — B6's
+original resolution ("PIN length = exactly 4 digits, matches what's already coded")
+was correct about the *convention* the other two quadrants actually built to, but nothing
+had ever configured Person 4's real service to match it until this run exposed the gap.
+
+**Decision:** set `PNSM_PIN_MIN_LENGTH=4` explicitly in the root `docker-compose.yml`'s
+`ai-service` environment — a one-line config change using a knob Person 4's service
+already exposes for exactly this, not a code change to any quadrant. This is what
+actually makes B6's resolution hold at runtime, not just in the docs.
+
+### N13 — Embedding generation received a full URL where Person 4's AI service requires a bare object key
+
+`tryGenerateEmbedding` called `ai.embed(userId, { kind: 's3_key', value:
+referencePhotoUrl }, ...)` — passing the complete public URL
+(`http://minio:9000/pnsm-selfies/refs/<id>/<ulid>.jpg`) as if it were the bucket key.
+The code's own prior comment already flagged this as an unconfirmed gap ("this passes
+the URL through as a base64/s3_key value is not guaranteed to resolve — recorded as a
+known gap rather than guessed at"). It failed, always, with `object key is not within
+a managed prefix` — confirmed directly from the AI service's own logs. Every employee
+creation's embedding step failed silently (caught by `tryGenerateEmbedding`'s own
+`catch`, see N14), for every employee ever created, until this run.
+
+**Decision:** recover the real key deterministically instead of guessing at the
+contract. `uploadService.ts#presignAdminUpload` already builds the public URL as
+`${STORAGE_PUBLIC_BASE_URL}/${object_key}` — stripping that exact, known prefix off
+`reference_photo_url` recovers the true key with no new coordination needed.
+`objectKeyFromPublicUrl()` in `employeeService.ts` does this and is used by both
+`tryGenerateEmbedding` call sites (`createEmployee` and `updateEmployeePhoto`).
+Live-verified after the fix: a real employee's baseline enrolled successfully,
+`embedding_model: arcface_w600k_mbf_v1`, stored in the isolated, AES-256-GCM-encrypted
+`face_embeddings` collection exactly as designed.
+
+### N14 — `createEmployee` reported success unconditionally, even when N12/N13 had just failed
+
+Both `tryIssuePin` and `tryGenerateEmbedding` are deliberately best-effort (a biometric
+or PIN service hiccup shouldn't block onboarding) — but `createEmployee`'s response
+hardcoded `has_face_embedding: true` regardless of what `tryGenerateEmbedding` actually
+did, and `tryIssuePin` returned the locally-generated plaintext PIN unconditionally,
+even after its own `catch` block ran. Combined with N12 and N13 both failing on every
+attempt before their fixes, this meant HR was shown "Profile created," a real PIN
+number, and a green "Baseline enrolled"-shaped response for employees whose PIN hash
+and face embedding were never actually written to the database — check-in would fail
+for those employees later, for reasons invisible from the admin console.
+
+**Decision:** both helper functions now return their real outcome —
+`tryGenerateEmbedding` returns `boolean`, `tryIssuePin` returns `string | null` (`null`
+on a caught failure) — and `createEmployee` reports exactly that instead of hardcoding
+success. `Person2_WebDashboard/src/components/forms/employee-form.tsx` now shows an
+explicit `"<name> was created, but needs attention"` error toast naming which step(s)
+failed, instead of the same "Profile created" success toast used for a fully-working
+onboarding. The employee list's existing "No embedding" badge (already reading
+`has_face_embedding` correctly) now reflects reality instead of a hardcoded lie.
+
+### N15 — Mobile route mount order: the entire `/api/mobile/*` family was unreachable on a real server
+
+The single most severe finding of this pass. `routes/index.ts` mounted admin's router
+at `/api` *before* mobile's at `/api/mobile`. Express tries `router.use()` mounts in
+registration order, matching on path prefix — so every request to `/api/mobile/*`
+matched admin's broader `/api` prefix first and was dispatched into `adminRoutes`.
+That alone would have 404'd harmlessly and fallen through, except
+`admin/superadmin.routes.ts` mounts `router.use(requireAuth('admin'))` at its own bare
+`/` — required by Person 2's contract, which needs unprefixed routes like `GET
+/admins` and `GET /audit` (see N7's sibling reasoning in that file's own comment) —
+and a bare-`/` mount matches *any* unmatched path handed to that router, admin's own
+404s included. The result: every request under `/api/mobile/*`, login included, was
+intercepted by admin's auth gate and rejected with `401 {"error":{"code":
+"UNAUTHENTICATED","message":"Sign in required."}}` before ever reaching
+`mobileRoutes`. **The mobile API had never been reachable on any real running
+instance of this backend.** Nothing in the test suite caught it: the only two
+supertest-backed integration tests before this session (`auth.test.ts`,
+`health.test.ts`) only ever requested `/api/auth/*`, and every mobile-client
+verification to date ran with `VITE_MOCK_BACKEND=true`, which never makes this HTTP
+request at all — this is exactly the class of bug that only a genuine live
+cross-service run surfaces.
+
+**Decision:** mount `/api/mobile` before the bare `/api` admin group in
+`routes/index.ts`. `/api/mobile/*` never collides with any real admin route (none of
+admin's own paths start with `/mobile`), so this is a pure reorder with no behavior
+change for `/api/*` admin traffic — confirmed by a new regression test,
+`tests/integration/mobileRouteMounting.test.ts`, which asserts (a) a mobile login
+request reaches `mobileAuthService.mobileLogin` (proven by `User.findOne` being called
+with an `employee_code` filter, not admin's `email` filter) and returns the mobile
+bare-body shape, not admin's `{data,error}` envelope, and (b) admin routes under
+`/api` still correctly 401 through `requireAuth` exactly as before. Live-verified after
+the fix: mobile login, `GET /api/mobile/me`, and the full check-in pipeline all worked
+against the real running stack for the first time.
+
+### N16 — The mobile client's HTTP interceptor treated *any* 401 as "session expired," including a wrong PIN
+
+Discovered live, immediately after N15's fix made mobile login work at all: entering
+one incorrect check-in PIN didn't show a "wrong PIN, N attempts left" message — it
+silently logged the employee all the way out to the login screen. Root cause in
+`Person1_MobileClient/src/lib/http.js`'s response interceptor: it treated every `401`
+status as "the access token is stale," unconditionally attempting a refresh-and-retry.
+But a `401` is also the HTTP status for *any* mobile business-rule rejection under the
+shared response convention (`mobileError`, ADR-1) — `pin_mismatch`,
+`outside_geofence`, `mock_location_detected`, `liveness_failed`, `low_face_match` all
+return 401, distinguished only by a `reason` field in the body, not by status code.
+So: wrong PIN → interceptor calls `/api/mobile/auth/refresh` (succeeds, the session
+was fine) → replays the *original* check-in request with the same wrong PIN →
+predictably 401s again, re-verifying (and re-consuming an attempt against) the PIN a
+**second** time → that second rejection, now flagged `_pnsmRetried`, falls through to
+the interceptor's outer `catch`, which was written to mean "the refresh itself
+failed" — and unconditionally calls `clearAccessToken()` + `onSessionExpired()`,
+logging the employee out of a session that was never actually invalid.
+
+**Decision:** only the mobile API's own `reason: 'unauthenticated'` (the exact shape
+`requireAuth`'s `sendUnauthenticated` sends for mobile, see `middleware/auth.ts`)
+means "your session actually expired." Every other 401 `reason` is a business
+rejection the caller should see and let the user retry on the same screen, not a
+reason to touch the token at all. Added `__tests__/http.test.js`: asserts a
+`pin_mismatch` 401 rejects immediately with no refresh attempt and no session-expired
+callback (session survives), the same for the other business-rule reasons
+(`outside_geofence`, `mock_location_detected`, `liveness_failed`, `low_face_match`),
+and that a genuine `unauthenticated` 401 still triggers the refresh path as before. 3
+new tests, all passing; full suite 60/60 after the fix.
+
+### N17 — Attendance Logs page's own "All statuses" default broke the page outright
+
+`AttendanceView`'s status filter defaults to, and has an explicit `<option
+value="all">All statuses</option>` for, the literal string `'all'` — which was sent
+straight through to `GET /api/attendance?status=all`. The backend's
+`listAttendanceQuerySchema` has no `'all'` member; `status` is `z.enum(ATTENDANCE_
+STATUSES).optional()` — meaning "omit the field entirely" is how "no filter" is meant
+to be expressed. Every request from this page's own default, un-touched filter state
+therefore failed schema validation with `422 VALIDATION_FAILED`, permanently, until a
+user manually picked a specific status. `officeId` handles the exact same shape of
+problem correctly one line above (`officeId: officeId || undefined`) — `status` was
+simply the one place that pattern wasn't applied.
+
+**Decision:** `status: status === 'all' ? undefined : status` in the query builder,
+mirroring `officeId`'s existing, working pattern immediately above it. Live-verified:
+the Attendance Logs page now loads correctly on its own default state and shows real
+check-in rows (GPS, face-match score, status) pulled from the live backend.
+
+---
+
+**Summary of the Phase 5 live-testing pass (N10-N17):** all eight were found only by
+actually running `docker compose up` and exercising the real system through a real
+browser — none were catchable by any unit or mocked-integration test that existed
+before this session, because none of the four quadrants had ever had a real
+cross-service HTTP call made against them before. N15 in particular means the mobile
+app had *never* successfully talked to a real instance of this backend at any prior
+point in the project's history. This is the concrete argument for why ROADMAP.md
+Phase 5 existed as its own phase rather than being assumed to follow automatically
+from Phases 1-4 all passing their own isolated test suites.

@@ -32,7 +32,27 @@ import type { Geofence, Office, User } from '@/types/models';
 
 interface CreateResponse {
   employee: User;
-  generated_pin: string;
+  /**
+   * Null when Person 4's AI service failed to hash the PIN (the employee is
+   * still created — this alone never blocks onboarding, per employeeService.ts's
+   * own comment — but their pin_hash is unset, so check-in will fail until an
+   * admin resolves it). A live end-to-end run (ROADMAP.md Phase 5) found the
+   * backend previously always returning a plaintext PIN string here even
+   * after a caught hashing failure — HR would be told to hand out a PIN that
+   * was never actually saved. See DECISIONS.md N9.
+   */
+  generated_pin: string | null;
+  /**
+   * The employee's initial mobile-login password — backend generates and
+   * hashes one either way (a User document requires password_hash), but
+   * until this field existed the response never returned it, so no admin
+   * console user could ever actually learn it. Found via a real live
+   * end-to-end run (ROADMAP.md Phase 5): PNSM_Khan_Edit's own
+   * Person3_BackendAPI/src/services/employeeService.ts now returns it
+   * alongside generated_pin, for the exact same reason and on the exact
+   * same one-time-only basis.
+   */
+  generated_password: string;
 }
 
 export function EmployeeForm() {
@@ -41,6 +61,7 @@ export function EmployeeForm() {
   const { toast } = useToast();
   const [radius, setRadius] = useState(DEFAULT_GEOFENCE_RADIUS);
   const [issuedPin, setIssuedPin] = useState<string | null>(null);
+  const [issuedPassword, setIssuedPassword] = useState<string | null>(null);
 
   const { data: offices } = useQuery({
     queryKey: queryKeys.offices,
@@ -103,11 +124,28 @@ export function EmployeeForm() {
       queryClient.invalidateQueries({ queryKey: queryKeys.kpis });
       queryClient.invalidateQueries({ queryKey: queryKeys.geofences });
       setIssuedPin(data.generated_pin);
-      toast({
-        tone: 'success',
-        title: 'Profile created',
-        description: `${data.employee.name} can now check in from the mobile app.`,
-      });
+      setIssuedPassword(data.generated_password);
+      // Onboarding never blocks on the PIN or embedding step failing
+      // (employeeService.ts's own design), but silently telling HR
+      // "success" when either one didn't actually save left every such
+      // failure invisible — the employee would then fail to check in for a
+      // reason nobody could see from here. See DECISIONS.md N9.
+      const problems: string[] = [];
+      if (!data.generated_pin) problems.push('the 2FA PIN could not be issued');
+      if (!data.employee.has_face_embedding) problems.push('the face embedding could not be generated');
+      if (problems.length > 0) {
+        toast({
+          tone: 'error',
+          title: `${data.employee.name} was created, but needs attention`,
+          description: `${problems.join(' and ')}. Retry from their profile before they try to check in.`,
+        });
+      } else {
+        toast({
+          tone: 'success',
+          title: 'Profile created',
+          description: `${data.employee.name} can now check in from the mobile app.`,
+        });
+      }
       reset();
     },
     onError: (error: Error) => {
@@ -258,6 +296,21 @@ export function EmployeeForm() {
                 <p className="mt-2 text-[11.5px] text-verified">
                   Give this to the employee now. It is not shown again — reissue from their profile if
                   it is lost.
+                </p>
+              </CardBody>
+            </Card>
+          ) : null}
+
+          {issuedPassword ? (
+            <Card className="border-verified/30 bg-verified-soft">
+              <CardBody>
+                <p className="eyebrow">Initial mobile app password</p>
+                <p className="tnum mt-1 text-[20px] font-semibold leading-none text-verified">
+                  {issuedPassword}
+                </p>
+                <p className="mt-2 text-[11.5px] text-verified">
+                  Needed to sign into the mobile app for the first time, separately from the PIN above.
+                  It is not shown again — the employee should change it after signing in.
                 </p>
               </CardBody>
             </Card>

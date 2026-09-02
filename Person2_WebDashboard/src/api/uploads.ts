@@ -31,11 +31,18 @@ export interface PresignResult {
 /**
  * Ask the API for an upload URL.
  * `contentType` must be echoed back verbatim on the PUT, or S3 rejects the
- * signature — the header is part of what was signed.
+ * signature — the header is part of what was signed. `contentLength` must be
+ * the exact byte count of the (already compressed) file being uploaded: it
+ * is signed into the URL too, and Person 4's AI service separately rejects
+ * any presign request whose declared length exceeds its configured ceiling
+ * — sending a placeholder guess instead of the real, already-known size
+ * made every reference-photo upload fail outright (413) until this was
+ * fixed.
  */
-export async function requestUploadUrl(contentType: string): Promise<PresignResult> {
+export async function requestUploadUrl(contentType: string, contentLength: number): Promise<PresignResult> {
   const { data } = await api.post<PresignResult>('/uploads/presign', {
     contentType,
+    contentLength,
     purpose: 'reference_photo',
   });
   return data;

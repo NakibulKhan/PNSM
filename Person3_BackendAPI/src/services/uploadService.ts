@@ -18,6 +18,7 @@ export interface AdminPresignResult {
 export async function presignAdminUpload(
   userRef: string,
   contentType: string,
+  contentLength: number,
 ): Promise<AdminPresignResult> {
   const ai = getAiClient();
   const result = await ai.presignPut({
@@ -25,11 +26,17 @@ export async function presignAdminUpload(
     purpose: 'reference',
     objectId: newUlid(),
     contentType,
-    // The admin console presigns before it knows the final byte count (the
-    // browser hasn't read the file yet) — 5 MB is a generous ceiling for a
-    // single reference photo; Person 4's service still enforces its own
-    // PNSM_MAX_UPLOAD_BYTES server-side regardless of what is requested here.
-    contentLength: 5 * 1024 * 1024,
+    // The real, already-compressed byte count — the browser compresses the
+    // photo client-side (to the same PNSM_MAX_UPLOAD_BYTES/200KB budget
+    // check-in selfies target, per Person 2's own MAX_UPLOAD_MB constant)
+    // BEFORE calling this endpoint, so the size is genuinely known here.
+    // A prior version of this code hardcoded a 5MB guess instead, which
+    // Person 4's presign-put unconditionally rejects as PAYLOAD_TOO_LARGE
+    // (413) since it exceeds PNSM_MAX_UPLOAD_BYTES — that made every single
+    // admin-console reference-photo upload fail, caught only by an actual
+    // live end-to-end run (ROADMAP.md Phase 5), never by any test, since no
+    // test exercised the real AI service's presign-put size check.
+    contentLength,
   });
   return {
     mode: 's3',

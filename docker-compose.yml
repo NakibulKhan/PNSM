@@ -90,6 +90,15 @@ services:
       # Shared with backend below — must be byte-identical (DECISIONS.md N1).
       PNSM_HMAC_SECRET: ${PNSM_HMAC_SECRET:?set in .env — see SETUP.md}
       PNSM_AUTH_REQUIRED: "true"
+      # Person 3 generates a 4-digit PIN (matches Person 1's mobile UI, which
+      # hardcodes pin.length === 4) and Person 4's own default policy is 6 —
+      # a real end-to-end run (ROADMAP.md Phase 5) found every single PIN
+      # issuance failing against the unmodified default with "PIN must be at
+      # least 6 digits." DECISIONS.md B6 already settled on 4 digits as the
+      # convention "already coded" across the other two quadrants; this is
+      # what actually makes that resolution hold against the real service,
+      # not just the docs.
+      PNSM_PIN_MIN_LENGTH: "4"
       # "minio", not "localhost" or "host.docker.internal": this hostname has
       # to resolve correctly BOTH from inside this container (real get_object
       # calls during /v1/verify) AND from a browser on the host opening a

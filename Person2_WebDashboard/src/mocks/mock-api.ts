@@ -351,8 +351,14 @@ export function handleMockRequest(
         end_time: String(payload.shift_end ?? '18:00'),
         days_of_week: String(payload.days_of_week ?? 'Sun-Thu'),
       });
-      // Person 3 generates the 2FA PIN server-side and returns it once (FR-01).
-      return created({ employee, generated_pin: String(Math.floor(1000 + Math.random() * 9000)) });
+      // Person 3 generates the 2FA PIN AND an initial mobile-login password
+      // server-side and returns both exactly once (FR-01; DECISIONS.md N9's
+      // sibling finding on employeeService.ts's createEmployee).
+      return created({
+        employee,
+        generated_pin: String(Math.floor(1000 + Math.random() * 9000)),
+        generated_password: String(Math.floor(10000000 + Math.random() * 90000000)),
+      });
     }
 
     if (second && !third && method === 'GET') {

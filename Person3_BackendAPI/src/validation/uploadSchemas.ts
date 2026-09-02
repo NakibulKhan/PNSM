@@ -8,5 +8,6 @@ import { z } from 'zod';
 export const adminPresignSchema = z.object({
   contentType: z.enum(['image/jpeg', 'image/png', 'image/webp']),
   purpose: z.literal('reference_photo'),
+  contentLength: z.number().int().positive(),
 });
 export type AdminPresignInput = z.infer<typeof adminPresignSchema>;

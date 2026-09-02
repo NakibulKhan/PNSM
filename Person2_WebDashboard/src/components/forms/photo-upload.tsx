@@ -76,7 +76,7 @@ export function PhotoUpload({
 
       setPhase('uploading');
       setMessage('Uploading to secure storage…');
-      const presigned = await requestUploadUrl(result.file.type);
+      const presigned = await requestUploadUrl(result.file.type, result.file.size);
 
       if (presigned.mode === 's3' && presigned.uploadUrl) {
         await putToPresignedUrl(presigned.uploadUrl, result.file);

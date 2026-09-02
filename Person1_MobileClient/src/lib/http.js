@@ -99,7 +99,20 @@ http.interceptors.response.use(
     const original = error.config;
     const status = error.response?.status;
 
-    if (status !== 401 || !original || original._pnsmRetried) {
+    // A 401 from the mobile API means "sign in required" ONLY when
+    // `reason === 'unauthenticated'` (requireAuth's own shape, see
+    // Person3_BackendAPI/src/middleware/auth.ts#sendUnauthenticated). Every
+    // OTHER mobile business-rule rejection ALSO carries a 401 status by the
+    // same shared response convention (mobileError, ADR-1) -- pin_mismatch
+    // is the one that surfaced this live: a real end-to-end run
+    // (ROADMAP.md Phase 5) found that entering one wrong PIN forced a
+    // refresh-and-retry that predictably 401'd again with the same
+    // pin_mismatch, which the old blanket check treated as "refresh
+    // failed" and logged the employee out entirely -- silently burning a
+    // second PIN attempt in the process, for a login session that was
+    // never actually invalid.
+    const reason = error.response?.data?.reason;
+    if (status !== 401 || reason !== "unauthenticated" || !original || original._pnsmRetried) {
       return Promise.reject(error);
     }
 

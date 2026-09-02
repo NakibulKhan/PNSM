@@ -50,7 +50,15 @@ export function AttendanceView({ initialStatus = 'all' }: { initialStatus?: stri
       from: dhakaDayStartUtc(from).toISOString(),
       to: dhakaDayEndUtc(to).toISOString(),
       officeId: officeId || undefined,
-      status,
+      // 'all' is this component's own UI sentinel for "no filter" (the
+      // <option value="all"> below) — the backend's listAttendanceQuerySchema
+      // has no such value, only the real enum plus .optional(), so sending
+      // the literal string always failed validation with 422. A live
+      // end-to-end run (ROADMAP.md Phase 5) found this made the Attendance
+      // Logs page permanently broken on its own default filter state
+      // (status defaults to 'all' right above). officeId already handles the
+      // equivalent case correctly one line up; status needs the same.
+      status: status === 'all' ? undefined : status,
       page,
       pageSize: DEFAULT_PAGE_SIZE,
     }),

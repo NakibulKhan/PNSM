@@ -12,6 +12,23 @@ import { getAiClient, newUlid } from './aiClient';
 import { parseWeekLabel } from '../utils/shiftDays';
 import { AdminApiError } from '../utils/errors';
 import { logger } from '../utils/logger';
+import { STORAGE_PUBLIC_BASE_URL } from '../config/env';
+
+/**
+ * Recovers the bucket object key from the public URL `uploadService.ts`
+ * builds as `${STORAGE_PUBLIC_BASE_URL}/${object_key}`. Person 4's AI
+ * service requires the raw key for `image.kind: 's3_key'` (it rejects
+ * anything outside its managed key prefixes, e.g. `refs/...`) — passing the
+ * full URL through unchanged, as this code did before, always failed with
+ * "object key is not within a managed prefix", confirmed via a live
+ * end-to-end run (ROADMAP.md Phase 5) that showed embedding generation
+ * silently failing (caught by tryGenerateEmbedding's own catch block) for
+ * every single employee ever created.
+ */
+function objectKeyFromPublicUrl(url: string): string {
+  const prefix = `${STORAGE_PUBLIC_BASE_URL.replace(/\/+$/, '')}/`;
+  return url.startsWith(prefix) ? url.slice(prefix.length) : url;
+}
 
 async function employeeRoleId(): Promise<Types.ObjectId> {
   const role = await Role.findOne({ role_name: 'Employee' }).select('_id').lean();
@@ -19,27 +36,42 @@ async function employeeRoleId(): Promise<Types.ObjectId> {
   return role._id;
 }
 
-/** Best-effort — the reference photo is already uploaded (S3 key/URL); embedding failure shouldn't block employee creation. */
-async function tryGenerateEmbedding(userId: string, referencePhotoUrl: string): Promise<void> {
+/**
+ * Best-effort — the reference photo is already uploaded (S3 key/URL);
+ * embedding failure shouldn't block employee creation. Returns whether it
+ * actually succeeded: a live end-to-end run (ROADMAP.md Phase 5, DECISIONS.md
+ * N9) found `createEmployee` reporting `has_face_embedding: true`
+ * unconditionally regardless of this outcome — every embedding failure
+ * (there were several, for unrelated reasons each time) was silently hidden
+ * from the HR admin, who was told onboarding fully succeeded.
+ */
+async function tryGenerateEmbedding(userId: string, referencePhotoUrl: string): Promise<boolean> {
   try {
     const ai = getAiClient();
-    // The URL Person 2 sends is the presigned object's public form; the AI
-    // service expects the bucket key it can fetch. Since Person 4 owns the
-    // bucket layout, this passes the URL through as a base64/s3_key value is
-    // not guaranteed to resolve — recorded as a known gap rather than guessed
-    // at, since it depends on Person 4's key-naming, not documented here.
-    const result = await ai.embed(userId, { kind: 's3_key', value: referencePhotoUrl }, newUlid());
+    const objectKey = objectKeyFromPublicUrl(referencePhotoUrl);
+    const result = await ai.embed(userId, { kind: 's3_key', value: objectKey }, newUlid());
     await FaceEmbedding.findOneAndUpdate(
       { user_id: userId },
       { user_id: userId, envelope: result.envelope, model_version: result.model_version },
       { upsert: true, setDefaultsOnInsert: true },
     );
+    return true;
   } catch (err) {
     logger.error('Embedding generation failed — employee created without a face embedding', err, { userId });
+    return false;
   }
 }
 
-async function tryIssuePin(userId: string): Promise<string> {
+/**
+ * Returns the plaintext PIN only when the AI service actually hashed and
+ * stored it — same reasoning as `tryGenerateEmbedding` above. The previous
+ * version returned the locally-generated PIN unconditionally even after a
+ * caught hashing failure, so the HR admin would be shown "PIN issued: 1234"
+ * and told to hand it to the employee, while the employee's `pin_hash`
+ * server-side was never actually set — check-in would then fail for a
+ * reason nobody could see from the console.
+ */
+async function tryIssuePin(userId: string): Promise<string | null> {
   const pin = generatePin();
   try {
     const ai = getAiClient();
@@ -50,10 +82,11 @@ async function tryIssuePin(userId: string): Promise<string> {
       pin_cost: result.cost,
       pin_pepper_version: result.pepper_version,
     });
+    return pin;
   } catch (err) {
     logger.error('PIN hashing via AI service failed — employee has no PIN set yet', err, { userId });
+    return null;
   }
-  return pin;
 }
 
 function toEmployeeDTO(user: {
@@ -196,10 +229,22 @@ export async function createEmployee(input: CreateEmployeeInput) {
   });
 
   const generatedPin = await tryIssuePin(String(user._id));
-  await tryGenerateEmbedding(String(user._id), input.reference_photo_url);
+  const hasFaceEmbedding = await tryGenerateEmbedding(String(user._id), input.reference_photo_url);
 
   const created = await User.findById(user._id).populate('office_id', 'office_name').lean();
-  return { employee: toEmployeeDTO({ ...created!, has_face_embedding: true }), generated_pin: generatedPin };
+  return {
+    employee: toEmployeeDTO({ ...created!, has_face_embedding: hasFaceEmbedding }),
+    generated_pin: generatedPin,
+    // Same reasoning as generated_pin: this is the ONLY moment this value
+    // is ever available in plaintext (password_hash is select:false and
+    // one-way from here on) — a real live end-to-end run (ROADMAP.md
+    // Phase 5) found this response never included it at all, meaning no
+    // admin console user could ever actually learn a newly created
+    // employee's password, permanently locking every new employee out of
+    // mobile login. There is no dedicated CreateEmployeeResponse type this
+    // breaks — the route forwards whatever this function returns as-is.
+    generated_password: initialPassword,
+  };
 }
 
 export async function updateEmployee(id: string, input: UpdateEmployeeInput) {
