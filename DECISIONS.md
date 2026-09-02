@@ -117,3 +117,151 @@ Person 3's `README.md` references `PNSM_Backend_Architecture_Report.md` and
 `PNSM_Backend_ADR.md` as design-decision sources. Neither file exists anywhere in this
 project. **Decision:** repoint those references at this file (`DECISIONS.md`) and
 `ROADMAP.md`, which now serve that purpose.
+
+## New conflicts found while implementing Backend Phase 2
+
+The entries above were the conflicts each quadrant's own docs already flagged. Building
+the actual check-in pipeline (ROADMAP.md Phase 1) surfaced several more — real contract
+mismatches between already-written code in different quadrants that no single doc stated
+as a conflict, because each side wrote against its own understanding of the other's
+interface. Resolved the same way: read the most authoritative source for each side,
+pick the resolution, implement it consistently, record it here.
+
+### N1 — PIN and face verification are Person 4's, not local to the backend
+
+Person 3's Phase-1 scaffold built a local `hashPin`/`comparePin` (plain bcrypt, no
+pepper) in `utils/password.ts`, plus a `FaceVerificationService` interface mocked by
+`MockFaceVerificationService` — both explicitly placeholders (ADR-8) pending Person 4's
+real service. Person 4's actual, shipped `pnsm-ai-svc` (read directly from
+`Person4_AIBiometricService/docs/API.md`, `docs/INTEGRATION.md`, and
+`clients/node/pnsmAiClient.js`) is a separate HMAC-signed HTTP service that owns **both**
+PIN hashing/verification (`POST /v1/security/pin/hash`, `POST /v1/security/pin/verify` —
+with its own pepper secret Person 3 never sees, plus lockout: 5 attempts then a 15-minute
+lock enforced by Person 4, not Person 3) **and** face embedding/verification
+(`POST /v1/embed`, `POST /v1/verify`), per its ownership map.
+
+**Decision:** the backend copies Person 4's reference client
+(`clients/node/pnsmAiClient.js`, ported to TypeScript as
+`src/services/aiClient/pnsmAiClient.ts`, kept behaviorally identical — do not hand-roll
+the HMAC signing per Person 4's explicit instruction) and calls it for every PIN and face
+operation. `utils/password.ts`'s `hashPin`/`comparePin`/`generatePin` and the
+`FaceVerificationService` mock are superseded for the real pipeline — left in place,
+unused, rather than deleted, since they're tested code that documents the placeholder
+they replace. `comparePassword`/`hashPassword` (admin login password, not the PIN) are
+unaffected — those stay local, Person 4's service has no concept of the admin password.
+
+### N2 — Selfie/reference-photo uploads go through Person 4's presigned URLs, not through Person 3's server
+
+Person 3's Phase-1 scaffold built `storageService.ts` to receive the selfie as a
+multipart buffer and `PutObjectCommand` it server-side. Person 1's already-written
+`checkinService.js`/`api.js` matches that assumption (`buildCheckinFormData` posts a
+`selfieBlob` as multipart). Person 4's actual `INTEGRATION.md` §3.1 and `API.md`
+(`POST /v1/storage/presign-put`/`presign-get`) are explicit that this is wrong: "Do not
+send image bytes through Person 3's API... it removes image traffic from both
+containers, which matters when the whole task has 1 GB." Storage (bucket, CORS,
+presigning) is entirely Person 4's per the ownership map.
+
+**Decision:** adopt Person 4's presigned-upload flow. Person 3's role is a thin,
+authenticated proxy: a route calls the AI client's `presignPut`/`presignGet` and returns
+the result; the actual image bytes never touch Person 3's process. `storageService.ts`
+(direct server-side upload) is superseded and left unused — real S3/R2 credentials
+were never going to be available for local dev-complete anyway (`DECISIONS.md` B3/B4).
+**Touches Person 1 (Phase 3):** `checkinService.js` must change from multipart upload to
+(1) request a presigned URL, (2) `PUT` the compressed blob directly to the bucket,
+(3) send only `object_key` in the check-in JSON body, matching Person 4's §3.1 sequence
+exactly.
+
+### N3 — Mobile auth gets its own route family (closes ADR-6)
+
+Person 1's `http.js` already calls `/api/auth/refresh` expecting a **bare**
+`{ access_token }` body (snake_case), and `LoginScreen.jsx`'s comment describes
+`POST /api/auth/login` with `{ id, password, pin }`. Both paths collide with the admin
+auth routes already built at the same paths, which use `{email,password}` and the
+`{data,error,meta}` envelope (`ADR-1`) — the two conventions cannot share one path.
+
+**Decision:** mobile auth is mounted separately, under `/api/mobile/auth/*`
+(`login`, `refresh`, `logout`), using the existing `mobile` route-group convention
+(bare body, already built in `middleware/routeGroup.ts`/`requireAuth('mobile')`) rather
+than reusing `/api/auth/*`. Login accepts `{ employee_code, password }` — **password
+only**, matching every other documented login flow; the "2FA PIN" field on
+`LoginScreen.jsx` is not backed by any documented backend login check anywhere (Person
+4's PIN verification is documented only as step 2 of the *check-in* sequence, never
+login). Reuses `authService.login`'s underlying logic (same JWT issuance, same
+`User`/`Role` lookup), just keyed on `employee_code` instead of `email` and formatted as
+a bare mobile response. Refresh accepts the token from the cookie **or** a
+`{ refresh_token }` body field (same "issue both" reasoning as B1 — Capacitor cookies are
+unreliable), returns `{ access_token }` bare, and rotates the cookie.
+**Touches Person 1 (Phase 3):** `http.js`'s hardcoded `/api/auth/refresh` becomes
+`/api/mobile/auth/refresh`; `LoginScreen.jsx` drops the client-side PIN gate (the PIN
+still appears once per check-in, verified server-side, exactly as `checkinService.js`
+already does) and posts to `/api/mobile/auth/login`.
+
+### N4 — A new `GET /api/mobile/me` endpoint, since none of Person 1's screens fetch real data yet
+
+`AppContext.jsx`, `HomeScreen.jsx`, and `ProfileScreen.jsx` are all hardcoded demo state
+today (`OFFICES.hq`/`.north`/`.south` string-keyed offices, a static employee, static
+history) — there is no existing mobile "home" or "profile" fetch to match. Check-in also
+needs a real Mongo `geofence_id`, which a hardcoded `office.key` slug can never provide.
+
+**Decision:** add one endpoint, `GET /api/mobile/me`, returning the employee's own
+profile, assigned office, assigned geofence (as `{ lat, lng }`, not raw GeoJSON — mobile
+should never construct a GeoJSON pair by hand, same reasoning as `utils/geo.ts`), shift,
+and recent attendance history — enough to drive both `HomeScreen` and `ProfileScreen`
+plus supply a real `geofence_id` for check-in. **Touches Person 1 (Phase 3):** replace
+`AppContext`'s hardcoded `initialState`/`OFFICES` with a fetch from this endpoint.
+
+### N5 — Check-in device fields Person 1 hasn't sent yet
+
+Person 4's `/v1/verify` requires a `device` object (`platform`, `os_version`,
+`app_version`, `is_mock_location`, `is_emulator`, `is_rooted`) and a `captured_at`
+timestamp with ±120s skew tolerance — none of `checkinService.js`'s current payload
+fields map onto `is_emulator`/`is_rooted`/`os_version`/`app_version`/`platform`, only
+`mock_location_flag` (→ `is_mock_location`) and `timestamp` (→ `captured_at`) do.
+
+**Decision:** the backend's mobile check-in schema requires the full device object;
+missing fields fail validation rather than silently defaulting (a missing emulator/root
+flag is exactly the kind of gap that should be loud, not silently treated as "false").
+**Touches Person 1 (Phase 3):** extend the check-in payload with the missing fields —
+platform/os_version/app_version are cheap (`Capacitor.getPlatform()`, `Device` plugin);
+`is_emulator`/`is_rooted` need real detection logic that does not exist yet in this
+codebase and is flagged again here so it isn't lost.
+
+### N6 — `days_of_week` label parsing needed at the admin write boundary
+
+Person 2's employee-creation payload sends `days_of_week` as a display label
+(`"Sun-Thu"`), but Person 3's `Shift` model treats the numeric array as the only source
+of truth and *derives* the label (`ADR-3`, `deriveWeekLabel` in `utils/shiftDays.ts`) —
+deliberately never the other direction, to keep the model's invariant that the label is
+always regenerated, never hand-authored.
+
+**Decision:** add a label→days parser (`utils/shiftDays.ts`'s new `parseWeekLabel`)
+used **only** at the admin employee-creation/update route boundary — not inside the
+`Shift` model, which keeps deriving the label from the array exactly as before. Round-trips
+`"Sun-Thu"`/`"Mon-Fri"`/`"Every day"`/comma-separated lists correctly since
+`deriveWeekLabel` already defines the canonical output shape this must invert.
+
+### N8 — `FaceEmbedding` schema corrected to match Person 4's real envelope shape
+
+Person 3's Phase-1 `FaceEmbedding` model stored a ciphertext string (`vector_data`) plus
+an `{algorithm, key_id}` pair, matching the local `embeddingCrypto.ts` seam built for
+ADR-8's placeholder. Person 4's actual `POST /v1/embed` response returns a structured
+`envelope` object (`{v, kp, kv, dek, alg, iv, ct, tag, model_version, created_at}`) with
+an explicit instruction: "store `envelope` verbatim... do not reformat it... do not
+validate the shape yourself, because it will change again."
+
+**Decision:** `FaceEmbedding.envelope` is now `Schema.Types.Mixed` (opaque, `select:
+false`), replacing `vector_data`/`encryption`. `model_version` stays as a top-level
+field (mirrors `envelope.model_version`, cheap to query without touching the opaque
+blob). `services/faceVerification/embeddingCrypto.ts`'s `EmbeddingCipher` seam is
+superseded along with the rest of N1 — Person 3 never encrypts or decrypts a vector at
+all now, Person 4 does both ends. Left in place, unused.
+
+### N7 — Object storage for local dev: MinIO, not R2/S3
+
+Backend Phase 1's `docker-compose.yml` (already present) only defines `mongo`; there is
+no local object store, and `STORAGE_PROVIDER` defaults to `r2` with empty credentials.
+Since uploads are now proxied through Person 4's AI service (N2), Person 3's own
+`docker-compose.yml` needs a MinIO service so `PNSM_AI_URL` has something to presign
+against locally — this is Person 4's Phase 2 concern to configure fully, but Person 3's
+compose file gets a MinIO service added now so `docker compose up` here is not
+half-wired ahead of Phase 2.

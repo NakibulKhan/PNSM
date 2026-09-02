@@ -17,20 +17,30 @@ then proceed in parallel once Backend's routes exist. Integration testing comes 
 
 ## Phase 1 — Person 3: Backend API (blocks everything else)
 
-- [ ] Local infra: docker-compose service definitions for MongoDB + MinIO (S3-compatible), env vars pointed at them instead of Atlas/AWS (per `DECISIONS.md` B3/B4)
-- [ ] Check-in pipeline: `POST /attendance/check-in` — geofence validation (`$geoWithin`/`$centerSphere`), calls Person 4's AI service (HMAC-signed request per its `INTEGRATION.md`), records `AttendanceLog` with `flagged`/`approved`/`rejected` per `DECISIONS.md` B2
-- [ ] Employee routes (CRUD, onboarding)
-- [ ] Geofence routes (CRUD, tied to `Office`)
-- [ ] Attendance routes (list/filter/detail — feeds Person 2's dashboard)
-- [ ] Leave routes (request/approve/reject, `LeaveBalance`)
-- [ ] Dashboard/analytics routes (KPIs, trends)
-- [ ] Super-Admin routes (admins, audit, billing, policy)
-- [ ] Mobile-specific routes matching Person 1's expected contract (profile, home data)
-- [ ] `POST /mobile/heartbeat` — rate-limited, capped/TTL collection (`DECISIONS.md` B7)
-- [ ] Socket.IO: actually emit `attendance:new`, `attendance:flagged`, `spoof:alert`, `notification:new` (currently handshake only, no real emission)
-- [ ] Wire the storage service to real upload routes (service exists, not yet wired to a route)
-- [ ] First real `npm install && npm run build && npm test` run — fix whatever surfaces (never run before in the authoring sandbox)
-- [ ] Update `README.md`'s broken doc references to point at `DECISIONS.md`/`ROADMAP.md` (per `DECISIONS.md`)
+Task list below reflects the real contracts discovered by reading Person 4's actual
+`API.md`/`INTEGRATION.md`/client and Person 1's/Person 2's actual code — see
+`DECISIONS.md` N1–N7 for the reasoning behind each.
+
+- [x] Update `README.md`'s broken doc references to point at `DECISIONS.md`/`ROADMAP.md`
+- [x] AI service client: ported Person 4's `clients/node/pnsmAiClient.js` to `src/services/aiClient/pnsmAiClient.ts` (HMAC signing, `embed`/`verify`/`hashPin`/`verifyPin`/`presignPut`/`presignGet`) — `DECISIONS.md` N1
+- [x] Env additions: `PNSM_AI_URL`, `PNSM_HMAC_SECRET`
+- [x] `docker-compose.yml`: added a MinIO service alongside `mongo` — `DECISIONS.md` N7
+- [x] Mobile auth: `POST /api/mobile/auth/login` (`employee_code`+password), `/refresh`, `/logout` — `DECISIONS.md` N3
+- [x] `GET /api/mobile/me` — profile + assigned office/geofence + shift + recent history — `DECISIONS.md` N4
+- [x] Check-in pipeline: `POST /api/mobile/attendance/checkin` — PIN verify via AI client → geofence check (existing `geofenceService`) → face verify via AI client → `AttendanceLog` write → Socket.IO emit, following Person 4's exact 6-step sequence and error-code table — `DECISIONS.md` N1, N2, N5. Also corrected `FaceEmbedding`'s schema to match Person 4's real opaque `envelope` shape (`DECISIONS.md` N8), found while wiring this up.
+- [x] `POST /api/mobile/attendance/anomaly` — spoofing anomaly reports from the mobile client
+- [x] `POST /api/mobile/heartbeat` — rate-limited, capped/TTL collection (new `Heartbeat` model, 24h TTL index) — `DECISIONS.md` B7
+- [x] Presign proxy routes (admin `POST /api/uploads/presign`, mobile `POST /api/mobile/uploads/presign`) — thin pass-through to the AI client's `presignPut`/`presignGet`, no image bytes touch this server — `DECISIONS.md` N2
+- [x] Employee routes: `GET /employees`, `POST /employees` (incl. PIN generation via AI client + `Shift` creation via new `parseWeekLabel`), `GET/PATCH /employees/:id`, `PATCH /employees/:id/photo`, `DELETE /employees/:id` (soft) — `DECISIONS.md` N6
+- [x] Office + geofence routes: `GET /offices`, `GET/POST/PATCH/DELETE /geofences`
+- [x] Attendance routes: `GET /attendance`, `GET /attendance/feed`, `GET /attendance/live-map`, `GET /attendance/:id/selfie-url`, `POST /attendance/:id/approve|reject`
+- [x] Leave routes: `GET /leave`, `POST /leave/:id/approve|reject`
+- [x] Dashboard routes: `GET /dashboard/kpis`, `GET /dashboard/trend`
+- [x] Super-Admin routes: `GET /admins`, `GET /audit`, `GET /spoof-alerts`, `GET /billing`, `GET/PATCH /policy`
+- [x] Socket.IO: wired real emission of `attendance:new`, `attendance:flagged`, `spoof:alert`, `notification:new` from the routes above (emitters existed since Phase 1 scaffolding, unused until now)
+- [x] First real `npm install && npm run build && npm test` run — surfaced and fixed 4 pre-existing bugs never caught before (the scaffold had never actually been run): `jest.config.js`/`tsconfig.json` `rootDir` conflict that failed every single test suite at collection (fixed with a dedicated `tsconfig.jest.json`), a Socket.IO `data` property module-augmentation that can't type-check (fixed using Socket.IO's own generic parameters instead), an `authService.ts` type omitting `reference_photo_url`'s possible `undefined`, and an integration test sending a 5-character password that failed schema validation before it could exercise the case it was testing. Added 18 new tests (11 for the check-in pipeline's success/rejection paths, 7 for `parseWeekLabel`'s round-trip with `deriveWeekLabel`) — full suite is 133/133 passing, clean typecheck, clean build.
+
+**Not done in this phase, by design:** actual native-device fields for `is_emulator`/`is_rooted` detection (Person 1, Phase 3), wiring Person 2's dashboard/Person 1's mobile client to these real endpoints (Phases 3-4), running this against a real MongoDB/MinIO instance rather than mocks (Phase 5 integration pass — the test suite mocks the persistence layer throughout, same scope choice the original Phase-1 auth tests made).
 
 ## Phase 2 — Person 4: AI Biometric Service
 
