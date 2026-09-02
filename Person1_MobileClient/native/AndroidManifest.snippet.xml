@@ -1,0 +1,42 @@
+<!--
+  Android native declarations — Quadrant I obstacle: "Native Build Sandboxing
+  Crashes". Paste into android/app/src/main/AndroidManifest.xml after
+  `npx cap add android`.
+-->
+
+<!-- Core check-in requirements -->
+<uses-permission android:name="android.permission.CAMERA" />
+<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+<uses-permission android:name="android.permission.INTERNET" />
+
+<!--
+  Required by capacitor-mock-location-checker so it can enumerate installed
+  apps holding mock-location permission.
+
+  POLICY WARNING: QUERY_ALL_PACKAGES is a Google Play restricted permission.
+  Play requires a declaration form justifying it, and rejects apps that use it
+  without a qualifying core purpose. Anti-fraud for an attendance app is
+  arguable but NOT automatically accepted. If Play refuses it, the plugin
+  still detects isMock on the location object itself; only the
+  "which spoofing app is installed" enumeration is lost. Confirm with Person 4
+  before submission.
+-->
+<uses-permission
+    android:name="android.permission.QUERY_ALL_PACKAGES"
+    tools:ignore="QueryAllPackagesPermission" />
+
+<!--
+  ONLY if background telemetry ships. Play requires a Location Permissions
+  declaration for background access with a documented user-visible purpose.
+-->
+<uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+<!-- Declared inside <application> -->
+<service
+    android:name=".PnsmForegroundService"
+    android:foregroundServiceType="location"
+    android:exported="false" />

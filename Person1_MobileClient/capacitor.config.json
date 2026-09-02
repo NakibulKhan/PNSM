@@ -1,0 +1,20 @@
+{
+  "appId": "com.pnsm.workforce",
+  "appName": "PNSM Workforce",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  },
+  "plugins": {
+    "Camera": {
+      "androidxExifInterfaceVersion": "1.3.7"
+    },
+    "Geolocation": {
+      "androidxCoreVersion": "1.13.1"
+    },
+    "LocalNotifications": {
+      "smallIcon": "ic_stat_pnsm",
+      "iconColor": "#0A2540"
+    }
+  }
+}

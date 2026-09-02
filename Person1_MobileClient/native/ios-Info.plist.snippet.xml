@@ -1,0 +1,31 @@
+<!--
+  iOS native sandbox declarations — Quadrant I obstacle: "Native Build
+  Sandboxing Crashes".
+
+  Paste these into ios/App/App/Info.plist AFTER running `npx cap add ios`.
+  Missing any of these causes an immediate, silent crash the first time the
+  corresponding hardware is touched — there is no JS-catchable error.
+
+  Apple rejects vague usage strings. Each string below states who is asking,
+  what is collected, and why.
+-->
+
+<key>NSCameraUsageDescription</key>
+<string>PNSM uses your camera to take a verification selfie when you check in for your shift.</string>
+
+<key>NSLocationWhenInUseUsageDescription</key>
+<string>PNSM checks your location against your assigned office geofence to confirm your attendance when you check in.</string>
+
+<!--
+  ONLY required if background telemetry is approved and shipped.
+  Do NOT add these until that decision is made: requesting Always
+  authorisation without a demonstrable need is a common App Store rejection,
+  and it materially changes the app's privacy posture.
+-->
+<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+<string>PNSM records your location during your assigned shift hours so your employer can verify field attendance. Tracking is disabled outside your shift.</string>
+
+<key>UIBackgroundModes</key>
+<array>
+  <string>location</string>
+</array>
