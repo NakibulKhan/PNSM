@@ -1,23 +1,23 @@
 import { describe, it, expect } from "vitest";
-import {
-  distanceMeters,
-  isInsideGeofence,
-  metersToRadians,
-  toGeoJsonPoint,
-  OFFICES,
-} from "../src/lib/geofence";
+import { distanceMeters, isInsideGeofence, metersToRadians, toGeoJsonPoint } from "../src/lib/geofence";
+
+// Known Dhaka coordinates, used only as test fixtures — production code gets
+// these from GET /api/mobile/me now (DECISIONS.md N4), not a client constant.
+const HQ = { lat: 23.8151, lng: 90.4257 };
+const NORTH = { lat: 23.8759, lng: 90.3795 };
+const SOUTH = { lat: 23.7461, lng: 90.3742 };
 
 describe("distanceMeters", () => {
   it("is ~0 for identical points", () => {
-    expect(distanceMeters(23.8151, 90.4257, 23.8151, 90.4257)).toBeCloseTo(0, 3);
+    expect(distanceMeters(HQ.lat, HQ.lng, HQ.lat, HQ.lng)).toBeCloseTo(0, 3);
   });
   it("is symmetric", () => {
-    const a = distanceMeters(23.8151, 90.4257, 23.7461, 90.3742);
-    const b = distanceMeters(23.7461, 90.3742, 23.8151, 90.4257);
+    const a = distanceMeters(HQ.lat, HQ.lng, SOUTH.lat, SOUTH.lng);
+    const b = distanceMeters(SOUTH.lat, SOUTH.lng, HQ.lat, HQ.lng);
     expect(a).toBeCloseTo(b, 6);
   });
   it("matches a known Dhaka reference distance (Bashundhara -> Uttara)", () => {
-    const d = distanceMeters(OFFICES.hq.lat, OFFICES.hq.lng, OFFICES.north.lat, OFFICES.north.lng);
+    const d = distanceMeters(HQ.lat, HQ.lng, NORTH.lat, NORTH.lng);
     expect(d).toBeGreaterThan(5000);
     expect(d).toBeLessThan(10000);
   });
@@ -35,7 +35,7 @@ describe("isInsideGeofence", () => {
     expect(isInsideGeofence(office.lat + 0.005, office.lng, office)).toBe(false);
   });
   it("rejects another branch entirely", () => {
-    expect(isInsideGeofence(OFFICES.south.lat, OFFICES.south.lng, office)).toBe(false);
+    expect(isInsideGeofence(SOUTH.lat, SOUTH.lng, office)).toBe(false);
   });
 });
 

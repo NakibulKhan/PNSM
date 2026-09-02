@@ -106,7 +106,16 @@ These are flagged rather than silently resolved. Each one is a place where the
 blueprint is internally inconsistent, over-optimistic, or carries a
 consequence outside my quadrant.
 
-## 1. BLOCKER — the blueprint contradicts itself on PIN transmission
+## 1. RESOLVED — PIN transmission
+
+**Confirmed by Person 3's real, shipped backend** (PNSM_Khan_Edit's
+`DECISIONS.md`, "PIN transmission" entry): raw PIN over TLS, as implemented
+here. The backend forwards it to Person 4's AI service for a
+bcrypt-hmac-sha256-pepper comparison — the plaintext-required constraint
+below was correct. No change needed to this client. Original reasoning kept
+for the record:
+
+<details><summary>Original blocker writeup</summary>
 
 - **Quadrant I** says this client sends *"a hashed representation of the
   user's 2FA PIN."*
@@ -130,6 +139,8 @@ with Quadrant III). The alternative sits behind `CLIENT_SIDE_PIN_PREHASH` in
 `lib/api.js`, default `false`.
 **Needed:** Person 3 confirms bcrypt-over-plaintext, or commits to storing
 `bcrypt(sha256(pin))`.
+
+</details>
 
 ## 2. iOS anti-spoofing is substantially weaker than the blueprint implies
 
@@ -188,18 +199,25 @@ HR would trust attendance data that was never collected.
   a promise in a policy document. The consent/disclosure position needs
   confirming with the project owners before this reaches real employees.
 
-## 5. `geofence_id` contract ambiguity (carried over, still open)
+## 5. RESOLVED — `geofence_id`
 
-`api-contract.md`'s request table omits `geofence_id` while its "Note on IDs"
-references it. Behaviour is unchanged: the field is still sent, per the note.
-Person 3 to confirm.
+No longer ambiguous: it's a real MongoDB ObjectId, fetched from
+`GET /api/mobile/me` (PNSM_Khan_Edit's `DECISIONS.md` N4) and carried on the
+`office` object in `AppContext` as `office.geofenceId`. The hardcoded
+`OFFICES` directory this file used to ship — three fixed Dhaka coordinates
+an employee could locally override in Profile — is gone; office assignment
+is now the backend's, matching how a real deployment has to work (HR assigns
+the office, not the employee).
 
 ## 6. The 15-second heartbeat is a real cost
 
 Per the blueprint, but at high-accuracy GNSS this is a material battery drain
 across an 8-hour shift and produces ~1,920 writes per employee per day.
 Configurable via `intervalMs`; flagged as a tuning decision rather than
-buried.
+buried. **Update:** the endpoint it posts to now exists for real
+(`POST /api/mobile/heartbeat`, PNSM_Khan_Edit's `DECISIONS.md` B7, backed by
+a capped/TTL collection) — this entry is about interval tuning, not
+plumbing, which is done.
 
 ## 7. Liveness is still a timed confirmation, not blink detection
 
@@ -213,24 +231,45 @@ report rather than implying the anti-fraud pipeline is complete client-side.
 
 ## Verification status
 
-- **Static/syntax check (tsc, all `.js`/`.jsx`/`.mjs`):** passed.
-- **JSON configs:** valid.
-- **`npm run audit:capacitor`:** executed, passes on the current manifest,
-  and verified to exit non-zero on deliberately mismatched versions.
-- **Informal Node dry-run:** 22/22 on geofence + compression guards, 19/19 on
-  the check-in orchestration with injected fakes.
-- **Vitest suite (`npm test`): NOT EXECUTED.** No npm registry access in the
-  build sandbox (403), so dependencies could not be installed. The five test
-  files are written but have never actually run — **run them before trusting
-  them.**
-- **Device/emulator:** not performed. Camera, GPS, and the mock-location
-  plugin cannot be exercised without real hardware.
+**Updated — ROADMAP.md Phase 3, `npm install`/`npm test`/`npm run build`
+actually ran** (real registry access this time; nothing below was possible
+in the original authoring sandbox):
+
+- **`npm install`:** succeeds. `npm audit` flags 27 findings, all transitive
+  build/CLI tooling deep under `@capacitor/cli` and
+  `capacitor-mock-location-checker`'s own `docgen`→`mecano` devDependency
+  chain (e.g. `ssh2-connect`, `js-yaml`) — none of it reaches the shipped web
+  bundle, several have no upstream fix yet, and `npm audit fix --force` was
+  deliberately not run: it would force major-version bumps in
+  `@capacitor/cli`/`@capacitor/android` that need a real native build to
+  verify, which is out of scope for local dev-complete. Flagged for whoever
+  next touches native builds, not fixed here.
+- **`npm test` (vitest): 57/57 passing**, including 29 new/rewritten tests
+  in `checkinFlow.test.js` covering the presigned-upload flow and the real
+  backend payload shape. Fixed one real, pre-existing bug this run caught:
+  `backoffMs()`'s exponent clamp could never actually reach its own
+  documented 10-minute cap (topped out at 8 minutes) — see the function's
+  doc comment in `lib/backgroundTelemetry.js`.
+- **`npm run build` (vite): succeeds**, clean, no warnings.
+- **Manual browser run (mock-backend mode):** login → home → profile →
+  check-in all confirmed rendering correctly against a real fetched profile,
+  zero console errors.
+- **Device/emulator:** still not performed. Camera, GPS, and the
+  mock-location plugin cannot be exercised without real hardware — out of
+  scope for local dev-complete (ROADMAP.md Phase 3's explicit native-build
+  exclusion).
+- **Real backend integration (not mock mode):** code-complete and unit/UI
+  verified as above, but not yet run against a live
+  `Person3_BackendAPI` + `Person4_AIBiometricService` pair on this machine —
+  that needs both services running simultaneously (Docker for MongoDB/MinIO
+  wasn't available in this environment). Deferred to ROADMAP.md Phase 5.
 
 ## Immediate next steps
 
-1. `npm install && npm test` somewhere with registry access.
+1. ~~`npm install && npm test` somewhere with registry access.~~ Done.
 2. `npx cap add ios android`, apply the `native/` snippets, and smoke-test
    check-in on a real device — approved, wrong PIN, outside geofence,
    airplane mode, and (Android) with a Fake GPS app installed.
-3. Get a decision on open issue #1 from Person 3 — it is a hard blocker for
-   real-backend integration.
+3. ~~Get a decision on open issue #1 from Person 3~~ — resolved, see #1 above.
+4. Run the full stack together (backend + AI service + this client) for a
+   real end-to-end check-in, per ROADMAP.md Phase 5.

@@ -55,13 +55,17 @@ function Shell() {
   }, [dispatch]);
 
   useEffect(() => {
-    if (state.isAuthenticated) {
+    if (state.isAuthenticated && state.employee) {
       startTelemetry({ employeeId: state.employee.id, shift: state.shift });
     } else {
       stopTelemetry();
     }
     return () => stopTelemetry();
-  }, [state.isAuthenticated, state.employee.id, state.shift]);
+    // state.employee starts null (AppContext.initialState) and is only ever
+    // populated together with isAuthenticated (PROFILE_LOADED) — optional
+    // chaining here is what keeps that transition from throwing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.isAuthenticated, state.employee?.id, state.shift]);
 
   if (!state.isAuthenticated) {
     return (

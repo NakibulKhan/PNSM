@@ -51,7 +51,8 @@ import { http, getAccessToken } from "./http";
  */
 
 export const DEFAULT_HEARTBEAT_MS = 15000; // per blueprint
-const HEARTBEAT_ENDPOINT = "/api/telemetry/heartbeat";
+// DECISIONS.md B7 — Person 3's real endpoint, under the mobile route family.
+const HEARTBEAT_ENDPOINT = "/api/mobile/heartbeat";
 
 let timerId = null;
 let config = null;
@@ -99,10 +100,18 @@ export function isWithinTrackingWindow(now, shift) {
 /**
  * Exponential backoff so a backend outage doesn't turn into 4 requests/minute
  * per employee hammering a degraded API.
+ *
+ * The exponent clamp must be high enough that `baseMs * 2^clamp` actually
+ * reaches the stated 10-minute ceiling — at 15s base, exponent 5 (32x) tops
+ * out at 8 minutes, so the outer Math.min() below could never fire and the
+ * documented cap was unreachable. First real test run (never executed
+ * before) caught this: `backoffMs(50)` returned 480000, not the intended
+ * 600000. Exponent 6 (64x = 16 minutes of multiplier headroom) is the
+ * smallest clamp that lets the explicit cap actually apply.
  */
 export function backoffMs(failures, baseMs = DEFAULT_HEARTBEAT_MS) {
   if (failures <= 0) return baseMs;
-  return Math.min(baseMs * 2 ** Math.min(failures, 5), 10 * 60 * 1000);
+  return Math.min(baseMs * 2 ** Math.min(failures, 6), 10 * 60 * 1000);
 }
 
 async function sendHeartbeat() {
@@ -114,15 +123,16 @@ async function sendHeartbeat() {
 
   try {
     const pos = await getCurrentPosition({ timeout: 8000 });
+    // Fields match Person 3's mobileHeartbeatSchema exactly (PNSM_Khan_Edit)
+    // — identity comes from the bearer token, not an employee_id field, and
+    // there is no `kind` field: the endpoint itself (/api/mobile/heartbeat,
+    // never /attendance/*) is what keeps this from ever being interpreted as
+    // a check-in.
     await http.post(HEARTBEAT_ENDPOINT, {
-      employee_id: config.employeeId,
       lat: pos.lat,
       lng: pos.lng,
       accuracy: pos.accuracy,
       timestamp: new Date().toISOString(),
-      // A heartbeat says "device alive and here"; it is NOT an attendance
-      // event and must never be interpreted as a check-in by the backend.
-      kind: "heartbeat",
     });
     lastSentAt = now;
     consecutiveFailures = 0;

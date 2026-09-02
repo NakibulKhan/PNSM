@@ -1,27 +1,31 @@
 import React, { createContext, useContext, useMemo, useReducer } from "react";
-import { OFFICES } from "../lib/geofence";
 
-const employee = {
-  id: "EMP-2431",
-  name: "Mehnaz Afrida",
-  fullName: "Mehnaz Afrida Chowdhury",
-  initials: "MA",
-};
-
-const initialHistory = [
-  { date: "2026-08-30", office: "PNSM HQ", inT: "9:02 AM", outT: "6:08 PM", status: "approved", score: 96 },
-  { date: "2026-08-29", office: "PNSM HQ", inT: "9:14 AM", outT: "6:01 PM", status: "flagged", score: 78 },
-  { date: "2026-08-28", office: "PNSM HQ", inT: "8:58 AM", outT: "6:05 PM", status: "approved", score: 98 },
-];
+/**
+ * DECISIONS.md N4 — replaces the earlier hardcoded demo employee/office/
+ * history with a real fetch from GET /api/mobile/me, which now exists on
+ * the real backend (PNSM_Khan_Edit/Person3_BackendAPI). Nothing in this
+ * file is mock data anymore; `initialState` is a genuine "nothing loaded
+ * yet" state, not a demo seed.
+ */
 
 export const initialState = {
   isAuthenticated: false,
-  employee,
-  office: OFFICES.hq,
+  loading: false,
+  employee: null,
+  office: null,
+  shift: null,
   checkedInAt: null,
-  history: initialHistory,
-  shift: { startHour: 9, endHour: 18, days: [1, 2, 3, 4, 5] },
+  history: [],
 };
+
+function initials(name) {
+  if (!name) return "?";
+  const parts = name.trim().split(/\s+/);
+  return parts
+    .slice(0, 2)
+    .map((p) => p[0]?.toUpperCase())
+    .join("");
+}
 
 function fmt(d) {
   let h = d.getHours();
@@ -31,41 +35,91 @@ function fmt(d) {
   return `${h}:${String(m).padStart(2, "0")} ${ap}`;
 }
 
+/**
+ * Maps GET /api/mobile/me's response shape onto this app's flatter,
+ * component-friendly shape. `office` merges the profile's separate
+ * `office`/`geofence` objects — every screen that needs "where do I check
+ * in" wants both together, and a real employee has exactly one assigned
+ * geofence at a time in this system, so there is no information lost by
+ * flattening them here.
+ */
+export function mapProfileToState(profile) {
+  const office =
+    profile.office && profile.geofence
+      ? {
+          key: profile.office._id,
+          name: profile.office.office_name,
+          address: profile.office.address,
+          lat: profile.geofence.lat,
+          lng: profile.geofence.lng,
+          radiusMeters: profile.geofence.radius_meters,
+          geofenceId: profile.geofence._id,
+        }
+      : null;
+
+  return {
+    employee: {
+      id: profile.employee._id,
+      name: profile.employee.name,
+      fullName: profile.employee.name,
+      initials: initials(profile.employee.name),
+      employeeCode: profile.employee.employee_code,
+      email: profile.employee.email,
+      department: profile.employee.department,
+      referencePhotoUrl: profile.employee.reference_photo_url,
+    },
+    office,
+    shift: profile.shift
+      ? {
+          startHour: Number(profile.shift.start_time?.slice(0, 2) ?? 9),
+          endHour: Number(profile.shift.end_time?.slice(0, 2) ?? 18),
+          days: profile.shift.days_of_week ?? [],
+          label: profile.shift.days_of_week_label ?? "",
+        }
+      : null,
+    history: (profile.recent_logs ?? []).map((log) => ({
+      _id: log._id,
+      checkType: log.check_type,
+      timestamp: log.timestamp,
+      status: log.status,
+      score: log.face_match_score,
+    })),
+  };
+}
+
 export function reducer(state, action) {
   switch (action.type) {
-    case "LOGIN":
-      return { ...state, isAuthenticated: true };
+    case "LOADING":
+      return { ...state, loading: true };
+    case "PROFILE_LOADED": {
+      const mapped = mapProfileToState(action.profile);
+      return { ...state, ...mapped, isAuthenticated: true, loading: false };
+    }
+    case "LOGIN_FAILED":
+      return { ...state, loading: false };
     case "LOGOUT":
-      return { ...state, isAuthenticated: false, checkedInAt: null };
-    case "SET_OFFICE":
-      return { ...state, office: action.office };
+      return { ...initialState };
     case "CHECK_IN_SUCCESS": {
-      const { time, status, score } = action.payload;
-      const date = time.toISOString().slice(0, 10);
+      const { time, status, score, checkType } = action.payload;
       const record = {
-        date,
-        office: state.office.name.split(" — ")[0],
-        inT: fmt(time),
-        outT: null,
+        _id: `local-${time.getTime()}`,
+        checkType,
+        timestamp: time.toISOString(),
         status,
         score,
       };
-      const idx = state.history.findIndex((h) => h.date === date);
-      const history =
-        idx >= 0
-          ? state.history.map((h, i) => (i === idx ? { ...h, ...record } : h))
-          : [record, ...state.history];
-      return { ...state, checkedInAt: time, history };
-    }
-    case "CHECK_OUT": {
-      const time = new Date();
-      const date = time.toISOString().slice(0, 10);
       return {
         ...state,
-        checkedInAt: null,
-        history: state.history.map((h) => (h.date === date ? { ...h, outT: fmt(time) } : h)),
+        checkedInAt: checkType === "check_in" ? time : state.checkedInAt,
+        history: [record, ...state.history].slice(0, 25),
       };
     }
+    case "CHECK_OUT":
+      // No dedicated backend call for check-out yet (ROADMAP.md Phase 3 only
+      // wires the check-IN pipeline end to end) — this stays a local-only UI
+      // state change, same as the original mock behaviour, until a real
+      // check-out flow is scoped.
+      return { ...state, checkedInAt: null };
     default:
       return state;
   }
@@ -84,3 +138,5 @@ export function useApp() {
   if (!ctx) throw new Error("useApp must be used inside AppProvider");
   return ctx;
 }
+
+export { fmt };

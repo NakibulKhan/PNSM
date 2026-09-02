@@ -14,7 +14,7 @@ import axios from "axios";
  *  - On 401: pause, hit /refresh once, replay the original request.
  */
 
-export const API_BASE_URL = import.meta.env?.VITE_API_BASE_URL ?? "https://api.pnsm.example.com";
+export const API_BASE_URL = import.meta.env?.VITE_API_BASE_URL ?? "http://localhost:5000";
 
 /* ------------------------------------------------- in-memory token store */
 
@@ -77,8 +77,14 @@ function flushWaiters(error, token) {
 async function performRefresh() {
   // Deliberately a bare axios call, not `http` — using the instance would
   // re-enter this same interceptor and recurse if /refresh itself 401s.
+  //
+  // /api/mobile/auth/refresh, not /api/auth/refresh — mobile has its own
+  // route family with a bare, snake_case response body (PNSM_Khan_Edit's
+  // DECISIONS.md N3): the admin path returns the {data,error,meta} envelope
+  // and a camelCase accessToken field instead, which is a different, wrong
+  // shape here.
   const res = await axios.post(
-    `${API_BASE_URL}/api/auth/refresh`,
+    `${API_BASE_URL}/api/mobile/auth/refresh`,
     {},
     { withCredentials: true, timeout: 15000 }
   );
@@ -99,7 +105,7 @@ http.interceptors.response.use(
 
     // Never try to refresh the refresh call or the login call itself.
     const url = original.url ?? "";
-    if (url.includes("/api/auth/refresh") || url.includes("/api/auth/login")) {
+    if (url.includes("/api/mobile/auth/refresh") || url.includes("/api/mobile/auth/login")) {
       return Promise.reject(error);
     }
 

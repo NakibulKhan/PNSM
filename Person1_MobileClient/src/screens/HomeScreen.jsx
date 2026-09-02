@@ -2,10 +2,25 @@ import React from "react";
 import { useNavigate } from "react-router-dom";
 import { useApp } from "../state/AppContext";
 
+function formatLogTime(iso) {
+  return new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+}
+
+function formatLogDate(iso) {
+  return new Date(iso).toLocaleDateString("en-US", { day: "2-digit", month: "short" });
+}
+
 export default function HomeScreen() {
   const navigate = useNavigate();
   const { state, dispatch } = useApp();
   const { employee, office, checkedInAt, history } = state;
+
+  if (!employee || !office) {
+    // PROFILE_LOADED sets isAuthenticated at the same time as employee/office,
+    // so this is only a brief render before that dispatch lands, not a real
+    // steady state — no need for a full loading screen.
+    return null;
+  }
 
   return (
     <div className="px-5 pb-28 pt-8">
@@ -56,19 +71,19 @@ export default function HomeScreen() {
       <section className="mt-6">
         <h2 className="mb-3 font-display text-lg text-text-navy">Recent check-ins</h2>
         <div className="rounded-xl border border-surface-border bg-surface-container-lowest">
+          {history.length === 0 && (
+            <p className="p-4 text-center text-xs text-on-surface-variant">No check-ins yet.</p>
+          )}
           {history.slice(0, 5).map((h) => (
             <div
-              key={h.date}
+              key={h._id}
               className="flex items-center justify-between border-b border-surface-border p-4 last:border-b-0"
             >
               <div>
                 <p className="font-semibold text-text-navy">
-                  {h.inT}
-                  {h.outT ? ` – ${h.outT}` : ""}
+                  {h.checkType === "check_out" ? "Check-out" : "Check-in"} · {formatLogTime(h.timestamp)}
                 </p>
-                <p className="text-xs text-on-surface-variant">
-                  {h.office} · {h.date}
-                </p>
+                <p className="text-xs text-on-surface-variant">{formatLogDate(h.timestamp)}</p>
               </div>
               <span
                 className={`font-mono text-[11px] uppercase ${
