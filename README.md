@@ -8,15 +8,16 @@ security, and biometric matching underneath.
 
 This is a **CSE482L (Internet and Web Technology) course project — Group 8, North South
 University**, built against the shared architecture document
-[`PNSM_4Person_Bulletproof_Plan.pdf`](../PNSM_4Person_Bulletproof_Plan.pdf), which splits
+[`PNSM_4Person_Bulletproof_Plan.pdf`](./PNSM_4Person_Bulletproof_Plan.pdf), which splits
 the system into four independent quadrants, one per team member. This repository is the
 merge of all four quadrants into a single project.
 
 > **Status:** each quadrant's Phase 1 (scaffolding, core building blocks) is built. Phase 2
-> (wiring the quadrants together end-to-end) is **not yet done** — see
-> [`INTEGRATION_GAPS.md`](./INTEGRATION_GAPS.md) for the full, sourced list of what's open
-> before this runs as one working system. This merge is organizational only: nothing in any
-> quadrant's code was rewritten to close those gaps.
+> (wiring the quadrants together end-to-end) is in progress, tracked quadrant-by-quadrant in
+> [`ROADMAP.md`](./ROADMAP.md). The ~9 cross-quadrant conflicts the four independent builds
+> produced (refresh-token delivery, face-match status naming, PIN transmission, and others)
+> have been resolved and recorded in [`DECISIONS.md`](./DECISIONS.md) — read that before
+> touching auth, the check-in pipeline, or anything that crosses a quadrant boundary.
 
 ## The four quadrants
 
@@ -62,6 +63,7 @@ team members should push their ongoing work to this same shared repo going forwa
 ## Where to look next
 
 - Setting up and running a specific quadrant → that folder's own `README.md`
-- What's still open between quadrants → [`INTEGRATION_GAPS.md`](./INTEGRATION_GAPS.md)
+- What's left to reach a working end-to-end system → [`ROADMAP.md`](./ROADMAP.md)
+- How the open cross-quadrant conflicts were resolved → [`DECISIONS.md`](./DECISIONS.md)
 - How to push your work to GitHub → [`GITHUB_COLLABORATION_GUIDE.md`](./GITHUB_COLLABORATION_GUIDE.md)
-- The original architecture spec → [`PNSM_4Person_Bulletproof_Plan.pdf`](../PNSM_4Person_Bulletproof_Plan.pdf)
+- The original architecture spec → [`PNSM_4Person_Bulletproof_Plan.pdf`](./PNSM_4Person_Bulletproof_Plan.pdf)

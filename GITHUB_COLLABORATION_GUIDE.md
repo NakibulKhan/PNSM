@@ -36,9 +36,9 @@ in `Person4_AIBiometricService/clients/` that Person 3 consumes, or changing a c
 `Person2_WebDashboard/docs/01-API-CONTRACT.md`), **open a PR and tag that folder's owner as
 a reviewer** rather than editing it directly.
 
-Root-level files (`README.md`, `GITHUB_COLLABORATION_GUIDE.md`, `INTEGRATION_GAPS.md`,
-`.gitignore`) are shared — coordinate in the team chat before editing these, since everyone
-touches them.
+Root-level files (`README.md`, `GITHUB_COLLABORATION_GUIDE.md`, `DECISIONS.md`,
+`ROADMAP.md`, `.gitignore`) are shared — coordinate in the team chat before editing these,
+since everyone touches them.
 
 ## 3. Branch naming
 
@@ -63,8 +63,8 @@ in flight and what quadrant it touches.
 5. Merge with `--no-ff` (GitHub's "Create a merge commit" option) rather than squash, so the
    history keeps showing each quadrant's work as its own thread — matching the merge
    structure already in this repo's log (`git log --graph --all`).
-6. If your PR resolves or informs an item in `INTEGRATION_GAPS.md`, update that doc in the
-   same PR (see §6 below).
+6. If your PR completes an item tracked in `ROADMAP.md`, check it off in the same PR. If it
+   touches a decision recorded in `DECISIONS.md`, update that doc too (see §6 below).
 
 ## 5. Avoiding conflicts and accidents
 
@@ -84,13 +84,14 @@ in flight and what quadrant it touches.
 
 ## 6. When you hit a cross-quadrant disagreement
 
-Several real disagreements between quadrants already exist and are tracked in
-[`INTEGRATION_GAPS.md`](./INTEGRATION_GAPS.md) (e.g., how the refresh token is delivered,
-what a below-threshold face match should be called). If you find a new one, or you resolve
-an existing one:
+The disagreements the four independent builds originally produced (how the refresh token is
+delivered, what a below-threshold face match should be called, PIN transmission format, and
+others) have already been resolved and recorded in
+[`DECISIONS.md`](./DECISIONS.md) — read the relevant entry before assuming there's still an
+open question. If you find a **new** one:
 
-- **Don't silently resolve it in code alone.** Add or update the relevant entry in
-  `INTEGRATION_GAPS.md` in the same PR, noting what was decided and by whom.
+- **Don't silently resolve it in code alone.** Add an entry to `DECISIONS.md` in the same
+  PR, noting what was decided and by whom.
 - If it changes another quadrant's contract, get that quadrant's owner to sign off in the
   PR before merging.
 

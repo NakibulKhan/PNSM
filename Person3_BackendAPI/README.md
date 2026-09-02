@@ -2,8 +2,8 @@
 
 Phase 1 — foundation, auth, RBAC scaffolding, and the service seams (Face
 verification, R2, Socket.IO) that later phases build on. See
-`PNSM_Backend_Architecture_Report.md` and `PNSM_Backend_ADR.md` for the
-decisions this code implements.
+[`../DECISIONS.md`](../DECISIONS.md) and [`../ROADMAP.md`](../ROADMAP.md) for
+the decisions this code implements and what's left to build (Phase 2).
 
 ## What exists in this phase
 
