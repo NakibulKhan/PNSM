@@ -12,12 +12,16 @@ University**, built against the shared architecture document
 the system into four independent quadrants, one per team member. This repository is the
 merge of all four quadrants into a single project.
 
-> **Status:** each quadrant's Phase 1 (scaffolding, core building blocks) is built. Phase 2
-> (wiring the quadrants together end-to-end) is in progress, tracked quadrant-by-quadrant in
-> [`ROADMAP.md`](./ROADMAP.md). The ~9 cross-quadrant conflicts the four independent builds
-> produced (refresh-token delivery, face-match status naming, PIN transmission, and others)
-> have been resolved and recorded in [`DECISIONS.md`](./DECISIONS.md) — read that before
-> touching auth, the check-in pipeline, or anything that crosses a quadrant boundary.
+> **Status:** all four quadrants are local dev-complete — each one's own dependencies
+> installed, typecheck/lint/test/build actually run (not just written), and every real bug
+> that surfaced along the way fixed, not just documented. See
+> [`ROADMAP.md`](./ROADMAP.md) for the phase-by-phase detail. The ~9 original
+> cross-quadrant conflicts plus everything else discovered while wiring the quadrants
+> together (refresh-token delivery, face-match status naming, PIN transmission, dead
+> pre-integration code, and more) are resolved and recorded in
+> [`DECISIONS.md`](./DECISIONS.md) — read that before touching auth, the check-in
+> pipeline, or anything that crosses a quadrant boundary. To run the whole stack locally,
+> see [`SETUP.md`](./SETUP.md).
 
 ## The four quadrants
 
@@ -54,16 +58,20 @@ documented in more detail in `Person4_AIBiometricService/docs/INTEGRATION.md` an
 
 ## Repository history
 
-This repo was assembled by merging each quadrant on its own branch and merging it into
-`main` (`git log --graph --all` shows this), so the history itself reflects "one project,
-built in four parts, merged to form the whole." See
-[`GITHUB_COLLABORATION_GUIDE.md`](./GITHUB_COLLABORATION_GUIDE.md) for how the four real
-team members should push their ongoing work to this same shared repo going forward.
+This repo is a local, single-machine build, structured the way a real four-person team's
+repo would be: one git branch per quadrant, each merged into `main` with its own commits
+(`git log --graph --all` shows this), and every remaining task tracked by which quadrant
+it belongs to. It has **not** been pushed to GitHub or any remote — everything above
+describes the local history only.
+[`GITHUB_COLLABORATION_GUIDE.md`](./GITHUB_COLLABORATION_GUIDE.md) is kept as a reference
+for how a real push/handoff to the four actual team members would work, if this project
+is ever shared that way — it does not describe anything that has happened yet.
 
 ## Where to look next
 
-- Setting up and running a specific quadrant → that folder's own `README.md`
-- What's left to reach a working end-to-end system → [`ROADMAP.md`](./ROADMAP.md)
-- How the open cross-quadrant conflicts were resolved → [`DECISIONS.md`](./DECISIONS.md)
-- How to push your work to GitHub → [`GITHUB_COLLABORATION_GUIDE.md`](./GITHUB_COLLABORATION_GUIDE.md)
+- Running the whole stack locally, end to end → [`SETUP.md`](./SETUP.md)
+- Setting up and running one specific quadrant → that folder's own `README.md`
+- What's left, phase by phase → [`ROADMAP.md`](./ROADMAP.md)
+- How the cross-quadrant conflicts were resolved → [`DECISIONS.md`](./DECISIONS.md)
+- If this is ever pushed to GitHub for the real team → [`GITHUB_COLLABORATION_GUIDE.md`](./GITHUB_COLLABORATION_GUIDE.md)
 - The original architecture spec → [`PNSM_4Person_Bulletproof_Plan.pdf`](./PNSM_4Person_Bulletproof_Plan.pdf)

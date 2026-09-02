@@ -1,0 +1,147 @@
+# PNSM — local dev-complete stack (ROADMAP.md Phase 5).
+#
+#   cp .env.example .env      # fill in the generated secrets, see SETUP.md
+#   docker compose up --build
+#
+# What you get:
+#   :27017 MongoDB
+#   :9000  MinIO (S3-compatible object store), console on :9001
+#   :8000  Person 4's AI/biometric service
+#   :5000  Person 3's backend API
+#
+# Person 1 (mobile) and Person 2 (web dashboard) are NOT containerized here —
+# they run via their own `npm run dev` on the host (5173 and 3000), pointed at
+# this stack's published :5000. See SETUP.md.
+#
+# THE ONE TRICKY PART: presigned MinIO URLs.
+# Person 4's AI service both (a) mints presigned PUT/GET URLs that a browser
+# on the HOST machine must be able to open, and (b) fetches check-in selfies
+# back out of the bucket itself, over the real network, from INSIDE this
+# compose project. Those are two different callers that need to reach the
+# same MinIO through the SAME hostname for a presigned URL's signature to
+# still be valid wherever it is opened. "minio" already resolves correctly
+# from every container in this project (Docker's built-in DNS); the missing
+# half is making the HOST machine's browser resolve "minio" too. SETUP.md
+# has the one-line hosts-file fix. Skipping it does not break enrolment or
+# login — only the "open a check-in selfie from the HR audit view" and
+# "the mobile client's own presigned upload PUT" paths need it, because
+# those specific requests are made by a browser or Capacitor WebView on the
+# host, not by a container.
+
+services:
+  mongo:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-pnsmlocal}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-pnsmlocal-secret}
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # Creates the bucket once, then exits. ai-service waits for a *ready
+  # bucket*, not merely a running MinIO — see Person4_AIBiometricService's
+  # own docker-compose.yml, which this mirrors (DECISIONS.md N7).
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 ${MINIO_ROOT_USER:-pnsmlocal} ${MINIO_ROOT_PASSWORD:-pnsmlocal-secret} &&
+      mc mb --ignore-existing local/pnsm-selfies &&
+      mc anonymous set none local/pnsm-selfies &&
+      echo 'bucket pnsm-selfies ready'
+      "
+
+  ai-service:
+    build: ./Person4_AIBiometricService
+    ports:
+      - "8000:8000"
+    environment:
+      PNSM_APP_ENV: local
+      PNSM_LOG_LEVEL: INFO
+      PNSM_KEY_PROVIDER: static
+      PNSM_FLE_KEYS: ${PNSM_FLE_KEYS:?set in .env — see SETUP.md}
+      PNSM_FLE_ACTIVE_KEY: ${PNSM_FLE_ACTIVE_KEY:-k1}
+      PNSM_PIN_PEPPER: ${PNSM_PIN_PEPPER:?set in .env — see SETUP.md}
+      PNSM_ADMIN_TOKEN: ${PNSM_ADMIN_TOKEN:?set in .env — see SETUP.md}
+      # Shared with backend below — must be byte-identical (DECISIONS.md N1).
+      PNSM_HMAC_SECRET: ${PNSM_HMAC_SECRET:?set in .env — see SETUP.md}
+      PNSM_AUTH_REQUIRED: "true"
+      # "minio", not "localhost" or "host.docker.internal": this hostname has
+      # to resolve correctly BOTH from inside this container (real get_object
+      # calls during /v1/verify) AND from a browser on the host opening a
+      # presigned URL. Docker's network already resolves it for the former;
+      # SETUP.md's hosts-file line resolves it for the latter.
+      PNSM_S3_ENDPOINT: http://minio:9000
+      PNSM_S3_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-pnsmlocal}
+      PNSM_S3_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-pnsmlocal-secret}
+      PNSM_S3_BUCKET: pnsm-selfies
+      PNSM_AWS_REGION: ap-southeast-1
+      # DECISIONS.md B2/N9: three-band mode is what makes "flagged" reachable
+      # at all, matching FR-07/ADR-5 and Person 2's whole review-queue UI.
+      PNSM_DECISION_BANDS: three
+    depends_on:
+      minio-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 45s
+    restart: unless-stopped
+
+  backend:
+    build: ./Person3_BackendAPI
+    ports:
+      - "5000:5000"
+    environment:
+      NODE_ENV: development
+      PORT: 5000
+      MONGODB_URI: mongodb://mongo:27017/pnsm
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?set in .env — see SETUP.md}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?set in .env — see SETUP.md}
+      # Person 2's dev server.
+      ADMIN_ALLOWED_ORIGINS: http://localhost:3000
+      # Person 1's dev server + Capacitor WebView origins (config/env.ts's own default).
+      MOBILE_ALLOWED_ORIGINS: capacitor://localhost,http://localhost,ionic://localhost,http://localhost:5173
+      PNSM_AI_URL: http://ai-service:8000
+      PNSM_HMAC_SECRET: ${PNSM_HMAC_SECRET:?set in .env — see SETUP.md}
+      # Display-only (DECISIONS.md N9's uploadService.ts note) — the bucket
+      # denies anonymous reads, so this never serves as a directly-fetchable
+      # link, only as the string shown in the admin console before a real
+      # presigned GET is issued.
+      STORAGE_PUBLIC_BASE_URL: http://minio:9000/pnsm-selfies
+    depends_on:
+      mongo:
+        condition: service_healthy
+      ai-service:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  mongo-data:
+  minio-data:
