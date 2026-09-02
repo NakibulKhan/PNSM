@@ -1,56 +1,27 @@
-import { http } from "./http";
+import axios from "axios";
+import { http, API_BASE_URL, setAccessToken } from "./http";
 
 /**
- * PNSM check-in API client.
- * Request/response shapes follow api-contract.md, which remains the source of
- * truth for the wire format (Person 3 owns it).
+ * PNSM mobile API client.
+ * Request/response shapes follow the real backend contract Person 3 built
+ * (PNSM_Khan_Edit's Person3_BackendAPI/src/validation/mobileSchemas.ts) —
+ * that codebase is the source of truth for the wire format now that it
+ * exists, superseding the earlier api-contract.md draft this file was
+ * originally written against.
  */
 
-export const MOCK_BACKEND = true; // flip to false once Person 3's routes are live
+// Defaults to the real backend now that it exists (ROADMAP.md Phase 3).
+// Set VITE_MOCK_BACKEND=true to fall back to the deterministic mock below
+// for offline UI work.
+export const MOCK_BACKEND = import.meta.env?.VITE_MOCK_BACKEND === "true";
 
 /* ===========================================================================
- * UNRESOLVED CONFLICT — 2FA PIN TRANSMISSION FORMAT. DO NOT "FIX" SILENTLY.
- * ===========================================================================
- * Three sources disagree about what this client should send:
- *
- *   1. Blueprint, Quadrant I (Person 1, this module):
- *        "...a hashed representation of the user's two-factor
- *         authentication (2FA) PIN."
- *
- *   2. Blueprint, Quadrant III (Person 3, the backend that receives it):
- *        "...cryptographically comparing the supplied 2FA PIN against a
- *         stored bcrypt hash."
- *
- *   3. api-contract.md (the ratified interface contract):
- *        `pin` | string (4 digits) | "The PIN as entered..."
- *
- * (1) and (2) are mutually exclusive as written. bcrypt.compare(plaintext,
- * storedHash) requires the PLAINTEXT: bcrypt embeds a per-hash random salt,
- * so the server cannot reproduce a client-side digest to compare against a
- * stored bcrypt hash. If this client sent SHA-256(pin), Person 3's documented
- * bcrypt comparison would fail for every single employee, every time.
- *
- * Separately, client-side hashing of a 4-digit PIN provides no meaningful
- * security benefit: the keyspace is 10,000 values, so an unsalted digest is
- * exhaustively reversible in microseconds. It also converts the digest into a
- * password-equivalent — an attacker who captures it can replay it directly —
- * while the transport is already protected by the TLS 1.2+ requirement in the
- * NFRs and Quadrant IV.
- *
- * RESOLUTION TAKEN: send the PIN as the contract specifies (option 3), which
- * is also the only option compatible with Quadrant III's bcrypt comparison.
- * The alternative is implemented behind the flag below but left OFF, so the
- * team can switch in one line IF Person 3 confirms they pre-hash before
- * bcrypt (i.e. store bcrypt(sha256(pin)) and compare against sha256(pin)).
- *
- * ACTION REQUIRED: Person 3 to confirm. Until then this stays as-is.
+ * 2FA PIN TRANSMISSION FORMAT — RESOLVED. See PNSM_Khan_Edit/DECISIONS.md,
+ * the "PIN transmission" entry: raw PIN over TLS, hashed server-side via
+ * Person 4's bcrypt-hmac-sha256-pepper scheme. Client-side hashing would be
+ * security theater against a bcrypt-compare backend (bcrypt needs the
+ * plaintext) and provides no real protection for a 4-digit keyspace anyway.
  * =========================================================================== */
-export const CLIENT_SIDE_PIN_PREHASH = false;
-
-/**
- * SHA-256 via WebCrypto, available in the Capacitor WebView on both platforms.
- * Only used if CLIENT_SIDE_PIN_PREHASH is enabled — see the block above.
- */
 export async function sha256Hex(value) {
   const bytes = new TextEncoder().encode(value);
   const digest = await crypto.subtle.digest("SHA-256", bytes);
@@ -59,39 +30,125 @@ export async function sha256Hex(value) {
     .join("");
 }
 
-async function resolvePinField(pin) {
-  return CLIENT_SIDE_PIN_PREHASH ? sha256Hex(pin) : pin;
+/* --------------------------------------------------------------------- auth */
+
+const MOCK_EMPLOYEE_CODE = "EMP-2431";
+const MOCK_PASSWORD = "demo1234";
+
+/** Self-consistent offline demo profile, used only when VITE_MOCK_BACKEND=true. */
+function mockProfile() {
+  const now = Date.now();
+  return {
+    employee: {
+      _id: "mock-emp-2431",
+      name: "Mehnaz Afrida Chowdhury",
+      employee_code: MOCK_EMPLOYEE_CODE,
+      email: "mehnaz@pnsm.example.com",
+      department: "Field Operations",
+      reference_photo_url: null,
+    },
+    office: { _id: "mock-office-hq", office_name: "PNSM HQ — Bashundhara, Dhaka", address: "" },
+    geofence: { _id: "mock-geofence-hq", lat: 23.8151, lng: 90.4257, radius_meters: 150 },
+    shift: { start_time: "09:00", end_time: "18:00", days_of_week: [0, 1, 2, 3, 4], days_of_week_label: "Sun-Thu" },
+    recent_logs: [
+      { _id: "mock-log-1", check_type: "check_in", timestamp: new Date(now - 86400000).toISOString(), status: "approved", face_match_score: 96 },
+      { _id: "mock-log-2", check_type: "check_in", timestamp: new Date(now - 172800000).toISOString(), status: "flagged", face_match_score: 78 },
+    ],
+  };
 }
 
 /**
- * Builds the multipart body for POST /api/attendance/checkin.
- * Field names match api-contract.md's request table exactly.
- *
- * NOTE on `geofence_id`: the contract's request table omits it while its
- * "Note on IDs" section references it. That inconsistency is still open with
- * Person 3, so the field is sent (per the note) but conditionally, and this
- * comment stays until it is resolved.
+ * POST /api/mobile/auth/login — DECISIONS.md N3. Password only; the PIN is
+ * verified once per check-in via Person 4's service, not at login.
  */
-export async function buildCheckinFormData(payload) {
-  const form = new FormData();
-  form.append("employee_id", payload.employee_id);
-  form.append("check_type", payload.check_type);
-  form.append("timestamp", payload.timestamp);
-  form.append("gps.lat", String(payload.gps.lat));
-  form.append("gps.lng", String(payload.gps.lng));
-  form.append("gps.simulated", String(payload.gps.simulated));
-  form.append("mock_location_flag", String(payload.mock_location_flag));
-  form.append("liveness_passed", String(payload.liveness_passed));
-  form.append("pin", await resolvePinField(payload.pin));
-  if (payload.geofence_id) form.append("geofence_id", payload.geofence_id);
-  if (payload.selfieBlob) {
-    form.append("selfie", payload.selfieBlob, "selfie.jpg");
+export async function loginMobile(employeeCode, password) {
+  if (MOCK_BACKEND) {
+    if (employeeCode !== MOCK_EMPLOYEE_CODE || password !== MOCK_PASSWORD) {
+      const err = new Error("Incorrect employee ID or password.");
+      err.response = { status: 401, data: { status: "rejected", reason: "invalid_credentials" } };
+      throw err;
+    }
+    setAccessToken("mock-access-token");
+    return mockProfile().employee;
   }
-  return form;
+  const res = await http.post("/api/mobile/auth/login", {
+    employee_code: employeeCode,
+    password,
+  });
+  setAccessToken(res.data.access_token);
+  return res.data.user;
+}
+
+export async function logoutMobile() {
+  if (MOCK_BACKEND) return;
+  try {
+    await http.post("/api/mobile/auth/logout");
+  } catch {
+    /* best-effort — clearing the local token is what actually matters */
+  }
+}
+
+/** GET /api/mobile/me — DECISIONS.md N4. Profile + assigned office/geofence/shift/history. */
+export async function fetchMobileProfile() {
+  if (MOCK_BACKEND) return mockProfile();
+  const res = await http.get("/api/mobile/me");
+  return res.data;
+}
+
+/* ----------------------------------------------------------- selfie upload */
+
+/**
+ * DECISIONS.md N2: the selfie is never sent through the backend as a file.
+ * Ask for a presigned URL, PUT the compressed bytes straight to the bucket,
+ * then reference the object by key in the check-in payload.
+ *
+ * @param {Blob} blob
+ * @param {'checkin'|'reference'} purpose
+ * @returns {Promise<string>} the object_key to send with the check-in
+ */
+export async function uploadSelfie(blob, purpose = "checkin") {
+  if (MOCK_BACKEND) return `mock/${purpose}/${Date.now()}.jpg`;
+
+  const presign = await http.post("/api/mobile/uploads/presign", {
+    purpose,
+    content_type: blob.type || "image/jpeg",
+    content_length: blob.size,
+  });
+  const { upload_url, headers, object_key } = presign.data;
+
+  // Deliberately a bare axios call, not `http`: a presigned URL carries its
+  // own signature-based authorization. Sending this backend's bearer token
+  // or cookies to the storage bucket is unnecessary and, for a third-party
+  // bucket origin, actively wrong.
+  await axios.put(upload_url, blob, { headers });
+
+  return object_key;
+}
+
+/* -------------------------------------------------------------- check-in */
+
+/**
+ * Builds the JSON body for POST /api/mobile/attendance/checkin.
+ * Field names match Person 3's mobileCheckinSchema exactly. `employee_id`
+ * is deliberately absent — identity comes from the bearer token, not the
+ * body.
+ */
+export function buildCheckinPayload(payload) {
+  return {
+    check_type: payload.check_type,
+    timestamp: payload.timestamp,
+    captured_at: payload.captured_at,
+    gps: { lat: payload.gps.lat, lng: payload.gps.lng },
+    geofence_id: payload.geofence_id,
+    pin: payload.pin,
+    liveness_passed: payload.liveness_passed,
+    object_key: payload.object_key,
+    device: payload.device,
+  };
 }
 
 /**
- * POST /api/attendance/checkin
+ * POST /api/mobile/attendance/checkin
  * Resolves to a contract-shaped response, or a client-synthesised
  * {status:'error'} for transport failures the server never got to answer.
  */
@@ -100,22 +157,20 @@ export async function submitCheckin(payload) {
 
   let res;
   try {
-    const form = await buildCheckinFormData(payload);
-    res = await http.post("/api/attendance/checkin", form, {
-      headers: { "Content-Type": "multipart/form-data" },
-    });
+    const body = buildCheckinPayload(payload);
+    res = await http.post("/api/mobile/attendance/checkin", body);
   } catch (err) {
-    // Axios rejects on non-2xx as well as on transport failure.
     const status = err.response?.status;
     const body = err.response?.data ?? {};
 
     if (!err.response) {
       return { status: "error", reason: "network_error", face_match_score: null };
     }
-    // Contract: 422 -> outside_geofence | mock_location_detected |
-    // liveness_failed ; 401 -> pin_mismatch
-    if ((status === 422 || status === 401) && body.reason) {
-      return { status: "rejected", reason: body.reason, face_match_score: null };
+    // The backend's mobile error envelope already carries {status, reason,
+    // face_match_score} for every documented rejection (bare body, ADR-1) —
+    // pass it through directly rather than re-deriving it.
+    if (body.status === "rejected" || body.status === "error") {
+      return body;
     }
     if (status >= 500) {
       return { status: "error", reason: "server_error", face_match_score: null };
@@ -129,6 +184,10 @@ export async function submitCheckin(payload) {
 /* ------------------------------------------------------------ mock backend */
 
 const MOCK_PIN = "4821";
+
+async function resolvePinField(pin) {
+  return pin; // the mock verifies the PIN itself, matching what a real backend does
+}
 
 function mockSubmitCheckin(payload) {
   return new Promise((resolve) => {
@@ -144,7 +203,7 @@ function mockSubmitCheckin(payload) {
           return;
         }
       }
-      if (payload.mock_location_flag) {
+      if (payload.device?.is_mock_location) {
         resolve({ status: "rejected", reason: "mock_location_detected", face_match_score: null });
         return;
       }
@@ -217,6 +276,19 @@ export function interpretCheckinResponse(res) {
         };
       case "pin_mismatch":
         return { kind: "rejected", title: "Incorrect PIN", message: "Incorrect PIN." };
+      case "pin_locked":
+        return {
+          kind: "rejected",
+          title: "PIN temporarily locked",
+          message: "Too many incorrect attempts. Try again later or contact HR.",
+        };
+      case "no_reference_embedding":
+      case "profile_needs_attention":
+        return {
+          kind: "rejected",
+          title: "Profile incomplete",
+          message: "Your profile needs attention before you can check in. Contact HR.",
+        };
       case "low_face_match":
       default:
         return {
@@ -258,9 +330,13 @@ export function interpretCheckinResponse(res) {
 export async function reportSpoofingAnomaly(details) {
   if (MOCK_BACKEND) return { reported: true, mock: true };
   try {
-    await http.post("/api/attendance/anomaly", {
-      type: "mock_location_detected",
-      ...details,
+    await http.post("/api/mobile/attendance/anomaly", {
+      lat: details.lat,
+      lng: details.lng,
+      platform: details.platform,
+      indicated_apps: details.indicated_apps,
+      detection_confidence: details.detection_confidence,
+      timestamp: details.timestamp,
     });
     return { reported: true };
   } catch {
@@ -268,3 +344,5 @@ export async function reportSpoofingAnomaly(details) {
     return { reported: false };
   }
 }
+
+export { API_BASE_URL };

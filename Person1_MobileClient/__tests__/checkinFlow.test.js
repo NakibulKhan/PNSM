@@ -1,9 +1,19 @@
 import { describe, it, expect, vi } from "vitest";
 import { runCheckin } from "../src/lib/checkinService";
 import { interpretCheckinResponse } from "../src/lib/api";
-import { OFFICES } from "../src/lib/geofence";
 
-const office = OFFICES.hq;
+// Fixture office/geofence, shaped exactly like AppContext's mapProfileToState()
+// output (DECISIONS.md N4) — production code gets this from GET /api/mobile/me.
+const office = {
+  key: "office-1",
+  name: "PNSM HQ — Bashundhara, Dhaka",
+  lat: 23.8151,
+  lng: 90.4257,
+  radiusMeters: 150,
+  geofenceId: "geofence-1",
+};
+
+const southOffice = { lat: 23.7461, lng: 90.3742 };
 
 /** Builds a full set of passing fakes; individual tests override one at a time. */
 function makeDeps(overrides = {}) {
@@ -33,6 +43,15 @@ function makeDeps(overrides = {}) {
       passes: 1,
       underLimit: true,
     })),
+    uploadSelfie: vi.fn(async () => "checkins/2026/09/03/emp-1/01JB80.jpg"),
+    getDeviceInfo: vi.fn(async () => ({
+      platform: "android",
+      os_version: "14",
+      app_version: "1.0.0",
+      is_emulator: false,
+      is_rooted: false,
+      checked: { is_emulator: true, is_rooted: false },
+    })),
     submitCheckin: vi.fn(async () => ({
       attendance_log_id: "log-1",
       status: "approved",
@@ -48,7 +67,7 @@ function makeDeps(overrides = {}) {
 function run(deps, opts = {}) {
   return runCheckin({
     office,
-    employeeId: "EMP-2431",
+    employeeId: "emp-1",
     pin: "4821",
     runLiveness: async () => true,
     deps,
@@ -82,23 +101,57 @@ describe("PIN handling — must never be verified or transformed on the client",
   });
 });
 
-describe("payload conforms to api-contract.md", () => {
-  it("includes every required contract field with the right shape", async () => {
+describe("payload matches Person 3's real mobileCheckinSchema", () => {
+  it("includes every required field with the right shape, and no employee_id or raw selfie bytes", async () => {
     const deps = makeDeps();
     await run(deps);
     const p = deps.submitCheckin.mock.calls[0][0];
 
-    expect(p.employee_id).toBe("EMP-2431");
+    // Identity comes from the bearer token now, not a body field.
+    expect(p).not.toHaveProperty("employee_id");
+    expect(p).not.toHaveProperty("selfieBlob");
+
     expect(p.check_type).toBe("check_in");
     expect(typeof p.timestamp).toBe("string");
     expect(new Date(p.timestamp).toString()).not.toBe("Invalid Date");
+    expect(typeof p.captured_at).toBe("string");
+    expect(new Date(p.captured_at).toString()).not.toBe("Invalid Date");
     expect(typeof p.gps.lat).toBe("number");
     expect(typeof p.gps.lng).toBe("number");
-    expect(typeof p.gps.simulated).toBe("boolean");
-    expect(typeof p.mock_location_flag).toBe("boolean");
+    expect(p.geofence_id).toBe("geofence-1");
     expect(typeof p.liveness_passed).toBe("boolean");
     expect(typeof p.pin).toBe("string");
-    expect(p.selfieBlob).toBeInstanceOf(Blob);
+    expect(p.object_key).toBe("checkins/2026/09/03/emp-1/01JB80.jpg");
+
+    expect(p.device).toEqual({
+      platform: "android",
+      os_version: "14",
+      app_version: "1.0.0",
+      is_mock_location: false,
+      is_emulator: false,
+      is_rooted: false,
+    });
+  });
+
+  it("uploads the compressed blob before submitting, and forwards its object_key", async () => {
+    const deps = makeDeps();
+    await run(deps);
+    expect(deps.uploadSelfie).toHaveBeenCalledTimes(1);
+    const [blob, purpose] = deps.uploadSelfie.mock.calls[0];
+    expect(blob).toBeInstanceOf(Blob);
+    expect(purpose).toBe("checkin");
+    // Upload must happen before submit — otherwise there is no object_key to send.
+    expect(deps.uploadSelfie.mock.invocationCallOrder[0]).toBeLessThan(
+      deps.submitCheckin.mock.invocationCallOrder[0]
+    );
+  });
+
+  it("reflects device.is_mock_location from the anti-spoofing check when it does not block the attempt", async () => {
+    // A non-blocking case would need spoof.isMock === false to reach submit,
+    // which is already covered above — this just pins the field mapping.
+    const deps = makeDeps();
+    await run(deps);
+    expect(deps.submitCheckin.mock.calls[0][0].device.is_mock_location).toBe(false);
   });
 });
 
@@ -119,6 +172,7 @@ describe("anti-spoofing", () => {
     expect(outcome.title).toBe("Mock location detected");
     // Bandwidth preservation requirement from the blueprint.
     expect(deps.submitCheckin).not.toHaveBeenCalled();
+    expect(deps.uploadSelfie).not.toHaveBeenCalled();
     // ...but the attempt is still surfaced to HR.
     expect(deps.reportSpoofingAnomaly).toHaveBeenCalledTimes(1);
     expect(deps.reportSpoofingAnomaly.mock.calls[0][0].indicated_apps).toContain("com.lexa.fakegps");
@@ -156,6 +210,7 @@ describe("200KB image-size gate", () => {
     const { outcome } = await run(deps);
     expect(outcome.kind).toBe("error");
     expect(outcome.title).toMatch(/too large/i);
+    expect(deps.uploadSelfie).not.toHaveBeenCalled();
     expect(deps.submitCheckin).not.toHaveBeenCalled();
   });
 
@@ -176,12 +231,26 @@ describe("200KB image-size gate", () => {
   });
 });
 
+describe("upload failure", () => {
+  it("stops before submit and reports an error, without ever posting a check-in", async () => {
+    const deps = makeDeps({
+      uploadSelfie: vi.fn(async () => {
+        throw new Error("network down");
+      }),
+    });
+    const { outcome } = await run(deps);
+    expect(outcome.kind).toBe("error");
+    expect(outcome.title).toMatch(/upload/i);
+    expect(deps.submitCheckin).not.toHaveBeenCalled();
+  });
+});
+
 describe("geofence pre-check", () => {
   it("rejects before capture when the employee is outside the radius", async () => {
     const deps = makeDeps({
       getCurrentPosition: vi.fn(async () => ({
-        lat: OFFICES.south.lat,
-        lng: OFFICES.south.lng,
+        lat: southOffice.lat,
+        lng: southOffice.lng,
         accuracy: 8,
         timestamp: Date.now(),
       })),
@@ -232,7 +301,7 @@ describe("liveness", () => {
 });
 
 describe("step ordering", () => {
-  it("runs cheap local checks before opening the camera or uploading", async () => {
+  it("runs cheap local checks before opening the camera, uploading, or submitting", async () => {
     const steps = [];
     const deps = makeDeps();
     await run(deps, { onStep: (s) => steps.push(s) });
@@ -244,6 +313,7 @@ describe("step ordering", () => {
       "capture",
       "liveness",
       "compressing",
+      "uploading",
       "submitting",
     ]);
   });
@@ -257,6 +327,8 @@ describe("interpretCheckinResponse covers every documented outcome", () => {
     [{ status: "rejected", reason: "mock_location_detected" }, "rejected"],
     [{ status: "rejected", reason: "liveness_failed" }, "rejected"],
     [{ status: "rejected", reason: "pin_mismatch" }, "rejected"],
+    [{ status: "rejected", reason: "pin_locked" }, "rejected"],
+    [{ status: "rejected", reason: "no_reference_embedding" }, "rejected"],
     [{ status: "rejected", reason: "low_face_match" }, "rejected"],
     [{ status: "error", reason: "network_error" }, "error"],
     [{ status: "error", reason: "invalid_request" }, "error"],

@@ -57,26 +57,10 @@ export function toGeoJsonPoint(lat, lng) {
   return { type: "Point", coordinates: [lng, lat] };
 }
 
-export const OFFICES = {
-  hq: {
-    key: "hq",
-    name: "PNSM HQ — Bashundhara, Dhaka",
-    lat: 23.8151,
-    lng: 90.4257,
-    radiusMeters: 150,
-  },
-  north: {
-    key: "north",
-    name: "PNSM North Branch — Uttara, Dhaka",
-    lat: 23.8759,
-    lng: 90.3795,
-    radiusMeters: 120,
-  },
-  south: {
-    key: "south",
-    name: "PNSM South Branch — Dhanmondi, Dhaka",
-    lat: 23.7461,
-    lng: 90.3742,
-    radiusMeters: 100,
-  },
-};
+/**
+ * The hardcoded office directory that used to live here (DECISIONS.md N4)
+ * is gone — an employee's office/geofence now comes from the real backend
+ * (GET /api/mobile/me), since check-in needs a real Mongo geofence_id that
+ * no client-side constant could ever provide. Test fixtures for known
+ * Dhaka coordinates live in each test file that needs them.
+ */

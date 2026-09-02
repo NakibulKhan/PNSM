@@ -1,32 +1,41 @@
 import React, { useState } from "react";
 import { useApp } from "../state/AppContext";
-import { setAccessToken } from "../lib/http";
-import { MOCK_BACKEND } from "../lib/api";
+import { loginMobile, fetchMobileProfile } from "../lib/api";
 
+/**
+ * DECISIONS.md N3 — password only. The PIN field that used to live here was
+ * never backed by any documented backend login check (Person 4's PIN
+ * verification is documented only as step 2 of the check-in sequence, never
+ * login) — it stayed a client-side-only gate that happened to duplicate the
+ * real PIN prompt on the check-in screen. Removed rather than left as dead
+ * UI that implies a security check nothing on the backend performs.
+ */
 export default function LoginScreen() {
   const { dispatch } = useApp();
-  const [id, setId] = useState("EMP-2431");
-  const [password, setPassword] = useState("demo1234");
-  const [pin, setPin] = useState("");
+  const [employeeCode, setEmployeeCode] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
 
   async function submit() {
-    if (!id.trim() || !password.trim()) return setError("Enter your ID and password.");
-    if (pin.length < 4) return setError("Enter your 4-digit 2FA PIN.");
+    if (!employeeCode.trim() || !password.trim()) {
+      return setError("Enter your Employee ID and password.");
+    }
     setError(null);
     setBusy(true);
+    dispatch({ type: "LOADING" });
     try {
-      if (MOCK_BACKEND) {
-        // Demo only. Real login POSTs {id, password, pin} to /api/auth/login,
-        // which returns the access token and sets the HttpOnly refresh cookie.
-        // Credentials are never validated on the client in production.
-        if (pin !== "4821") throw new Error("Incorrect PIN.");
-        setAccessToken("mock-access-token");
-        dispatch({ type: "LOGIN" });
-      }
+      await loginMobile(employeeCode.trim(), password);
+      const profile = await fetchMobileProfile();
+      dispatch({ type: "PROFILE_LOADED", profile });
     } catch (e) {
-      setError(e.message ?? "Sign-in failed.");
+      dispatch({ type: "LOGIN_FAILED" });
+      const reason = e.response?.data?.reason;
+      if (reason === "account_inactive") {
+        setError("This account has been deactivated. Contact HR.");
+      } else {
+        setError(e.response?.data?.error?.message ?? e.message ?? "Sign-in failed.");
+      }
     } finally {
       setBusy(false);
     }
@@ -46,8 +55,9 @@ export default function LoginScreen() {
           Employee ID
         </label>
         <input
-          value={id}
-          onChange={(e) => setId(e.target.value)}
+          value={employeeCode}
+          onChange={(e) => setEmployeeCode(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && submit()}
           className="mb-4 w-full rounded-lg border border-surface-border bg-surface-bright px-3 py-3"
         />
 
@@ -58,19 +68,8 @@ export default function LoginScreen() {
           type="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          className="mb-4 w-full rounded-lg border border-surface-border bg-surface-bright px-3 py-3"
-        />
-
-        <label className="mb-1 block font-mono text-[11px] uppercase text-on-surface-variant">
-          2FA PIN <span className="normal-case text-on-surface-variant">(demo: 4821)</span>
-        </label>
-        <input
-          type="password"
-          inputMode="numeric"
-          maxLength={4}
-          value={pin}
-          onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
-          className="w-full rounded-lg border border-surface-border bg-surface-bright px-3 py-3 text-center font-mono text-lg tracking-[0.5em]"
+          onKeyDown={(e) => e.key === "Enter" && submit()}
+          className="w-full rounded-lg border border-surface-border bg-surface-bright px-3 py-3"
         />
 
         {error && <p className="mt-3 text-center text-sm text-error">{error}</p>}

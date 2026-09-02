@@ -35,6 +35,9 @@ const RESULT_STYLES = {
 export default function CheckInScreen() {
   const navigate = useNavigate();
   const { state, dispatch } = useApp();
+  // App.jsx only mounts this screen once isAuthenticated is true, which
+  // PROFILE_LOADED sets at the same time as employee/office — both are
+  // always populated by the time this component renders.
   const { office, employee } = state;
 
   const [now, setNow] = useState(new Date());
@@ -135,6 +138,7 @@ export default function CheckInScreen() {
             time: new Date(),
             status: response.status,
             score: response.face_match_score,
+            checkType: "check_in",
           },
         });
       }
