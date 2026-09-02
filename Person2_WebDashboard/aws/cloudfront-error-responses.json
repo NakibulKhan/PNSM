@@ -1,0 +1,16 @@
+[
+  {
+    "ErrorCode": 403,
+    "ResponsePagePath": "/index.html",
+    "ResponseCode": "200",
+    "ErrorCachingMinTTL": 0,
+    "_comment": "S3 returns 403 (not 404) for a missing key when the bucket policy denies ListBucket, which is the recommended configuration. This is therefore the case that actually fires for an unknown deep link."
+  },
+  {
+    "ErrorCode": 404,
+    "ResponsePagePath": "/index.html",
+    "ResponseCode": "200",
+    "ErrorCachingMinTTL": 0,
+    "_comment": "Fires when the bucket is configured as a website endpoint. Both codes must be mapped; which one you hit depends on the origin type."
+  }
+]

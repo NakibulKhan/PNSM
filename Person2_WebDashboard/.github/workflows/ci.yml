@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop, 'person2/**']
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  verify:
+    name: Typecheck, lint, test, build
+    runs-on: ubuntu-latest
+    env:
+      VITE_DEMO_MODE: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      # `npm ci` installs exactly what the lockfile pins and fails if
+      # package.json and package-lock.json have drifted.
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm run test
+
+      - name: Production build
+        run: npm run build
+
+  supply-chain:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+      - run: npm ci
+      # OWASP A03, Software Supply Chain Failures: a single poisoned transitive
+      # dependency compromises the whole bundle. High and critical advisories
+      # halt the pipeline rather than reaching a deployment.
+      - name: Audit dependencies
+        run: npm audit --audit-level=high
