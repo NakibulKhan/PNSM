@@ -265,3 +265,38 @@ Since uploads are now proxied through Person 4's AI service (N2), Person 3's own
 against locally — this is Person 4's Phase 2 concern to configure fully, but Person 3's
 compose file gets a MinIO service added now so `docker compose up` here is not
 half-wired ahead of Phase 2.
+
+### N9 — Removed the dead pre-N1/N2 face-verification and storage modules; `Policy.face_match_threshold` is display-only
+
+Phase 5 (root-level `docker-compose.yml`) needed an accurate list of which env vars
+each service actually reads. Cross-checking `Person3_BackendAPI/src/config/env.ts`
+against real call sites turned up two modules N1/N2 had already fully superseded but
+that were never deleted: `services/faceVerification/` (ADR-8's `mock`-only adapter
+interface, plus the `embeddingCrypto.ts` seam N8 noted as "left in place, unused") and
+`services/storage/storageService.ts` (ADR-7's direct R2/S3 client). Neither was
+imported by any route — `attendanceService.ts` and `uploadService.ts` both call Person
+4's AI client directly, per N1/N2. Their only callers were their own now-deleted test
+files (`faceVerification.test.ts`, `storageService.test.ts`), which is why the count
+before this cleanup was 133 and not the still-meaningful 121.
+
+**Decision:** deleted both modules, their tests, the `@aws-sdk/client-s3` dependency
+(no longer used by anything), and the matching dead `STORAGE_*`/`FACE_SERVICE_PROVIDER`
+env vars — kept only `STORAGE_PUBLIC_BASE_URL`, which `uploadService.ts` genuinely
+still reads to build a display URL for admin reference-photo uploads.
+
+While tracing this, also found that `Policy.face_match_threshold` (seeded at 85,
+editable through the super-admin policy endpoint) is never read by
+`attendanceService.ts` — the check-in decision comes entirely from
+`result.decision` on Person 4's `/v1/verify` response, which is computed against
+Person 4's own `PNSM_APPROVE_THRESHOLD`/`PNSM_FLAG_THRESHOLD`. Editing the policy
+value through Person 2's dashboard has no effect on check-in behavior today. This is
+a real cross-quadrant gap, not fixed here (closing it means either the backend
+pushing policy changes to Person 4's `/v1/admin/recalibrate`, or Person 4 reading the
+threshold from Mongo instead of its own `.env` — an architecture decision, not a
+local cleanup) — documented so it is not mistaken for working configuration. The
+also-dead `env.ts` export of `DEFAULT_FACE_MATCH_THRESHOLD` (env-var driven, default
+85) was removed too: nothing imported it — `models/Policy.ts` imports an
+identically-named but separate hardcoded constant from `constants/index.ts` instead,
+so the env var never did anything even before this cleanup.
+
+Backend re-verified after this change: 121/121 tests, clean typecheck, clean build.

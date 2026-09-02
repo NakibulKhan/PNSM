@@ -128,9 +128,6 @@ export const PNSM_HMAC_SECRET = optional(
   'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
 );
 
-/** Business constants that are also mirrored as defaults on the Policy singleton (ADR-5). */
-export const DEFAULT_FACE_MATCH_THRESHOLD = optionalInt('DEFAULT_FACE_MATCH_THRESHOLD', 85);
-
 export const APP_TIMEZONE = 'Asia/Dhaka';
 
 export const BCRYPT_PIN_SALT_ROUNDS = optionalInt('BCRYPT_PIN_SALT_ROUNDS', 10);
