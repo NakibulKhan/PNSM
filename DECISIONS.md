@@ -499,3 +499,68 @@ app had *never* successfully talked to a real instance of this backend at any pr
 point in the project's history. This is the concrete argument for why ROADMAP.md
 Phase 5 existed as its own phase rather than being assumed to follow automatically
 from Phases 1-4 all passing their own isolated test suites.
+
+### N18 — Bootstrapping the first Super Admin: a seed script, not a signup route
+
+N10-N17's live pass exposed one more gap along the way, distinct from the eight bugs
+above: nothing in this system can create its *first* account. Admin accounts are
+created by an existing admin (a permission-gated `POST /api/employees`-shaped flow
+has no equivalent for admins at all — `superadmin.routes.ts` has no create-admin
+route either, only `GET /admins`), and mobile employee accounts are created by an
+admin console user (N3). A genuinely empty database — exactly what a fresh
+`docker compose up` produces — has no account anywhere that could log in and create
+the first one. The live pass worked around this by inserting a Super Admin directly
+via a one-off `node -e` snippet against the raw `mongoose` connection; that got the
+verification pass moving but left nothing reusable in the repository.
+
+Two ways to close this were considered:
+
+- **A guarded first-run signup endpoint** (e.g. `POST /api/auth/bootstrap`, allowed
+  only while `User.countDocuments() === 0`). Rejected: it's permanent API attack
+  surface for a system that stores biometric data, active for the entire life of any
+  deployment that is slow to run its first admin creation — a race between an
+  attacker's request and the real operator's first login is a real, if narrow,
+  window; "empty database" is also a weaker gate than it looks, since a deployment
+  can legitimately pass through an empty-but-not-yet-initialized state more than
+  once (e.g. after a restore).
+- **A seed script**, run directly against the database rather than through the API,
+  matching the pattern this project already uses for exactly this kind of one-time
+  local-dev bootstrapping (Person 4's `scripts/gen_keys.py`). No new runtime API
+  surface, nothing to guard, works identically for local dev and for a real
+  deployment's first-run playbook (any deploy tooling can just run it as a one-shot
+  job before traffic is accepted).
+
+**Decision:** a seed script, `Person3_BackendAPI/src/scripts/seed.ts`. Idempotent —
+upserts the three `Role` documents (`$setOnInsert`, never overwriting an existing
+role's `permissions`) and creates a Super Admin only if none exists at
+`PNSM_SEED_ADMIN_EMAIL` (default `admin@pnsm.local`); running it again against an
+already-seeded database is a safe no-op, reported as such rather than erroring.
+Without `PNSM_SEED_ADMIN_PASSWORD` it generates a random one and prints it exactly
+once — the same "generate and show once" idiom `employeeService.ts` already uses for
+PINs and initial passwords (N14), rather than a hardcoded default password shipped in
+source control. Runnable two ways: `npm run seed` (host, via the `ts-node` devDependency
+already in `package.json`) or `node dist/scripts/seed.js` inside a running container
+— the latter needs no new dependency in the runtime image at all, since `src/scripts/
+seed.ts` is picked up by the existing `tsc` build the Dockerfile's build stage already
+runs, and only imports packages (`mongoose`, `bcryptjs` via `utils/password`) already
+in the production `dependencies`, not `devDependencies`.
+
+`main()` is guarded behind `require.main === module` specifically so
+`ensureRoles`/`ensureSuperAdmin` can be imported and unit-tested (`tests/unit/
+seed.test.ts`, 5 tests: upserts all three roles without clobbering an existing one's
+permissions; creates a new Super Admin with a generated password and confirms the
+plaintext is never what gets persisted as `password_hash`; is a no-op when the account
+already exists; honors `PNSM_SEED_ADMIN_EMAIL`/`PNSM_SEED_ADMIN_PASSWORD` and
+normalises the email; and refuses to create a user with no `role_id` if the Super
+Admin role is somehow missing, rather than writing an unrooted account) without those
+tests connecting to a real database or triggering `process.exit`.
+
+Live-verified twice: against the real running compose stack's database (correctly
+reported the existing Super Admin and changed nothing — the idempotent path), and
+against a genuinely fresh, throwaway MongoDB container (created the account and
+printed a real generated password on the first run, then correctly reported it as
+already existing and changed nothing on an immediate second run — the create and
+idempotent paths both exercised against a real, empty-then-seeded database, not just
+the mocked unit tests). Confirmed separately that the real compose stack's own
+pre-existing admin login was unaffected throughout. Backend 132/132 after this
+addition (127 + 5 new), clean typecheck, clean build.

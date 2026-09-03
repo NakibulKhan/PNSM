@@ -55,41 +55,39 @@ Check everything is up:
 - AI service: `curl http://localhost:8000/health` and `curl http://localhost:8000/ready`
 - MinIO console: http://localhost:9001 (login with the `MINIO_ROOT_USER`/`PASSWORD` from `.env`)
 
-### Bootstrap the first Super Admin (known gap — no signup route exists)
+### Bootstrap the first Super Admin
 
 A fresh database has no accounts and no way to create one through the app itself:
 admin accounts are created by an existing admin (by design), and mobile employee
 accounts are created by an admin console user — so a genuinely empty database is a
-chicken-and-egg problem the API alone can't resolve. Insert the first one directly:
+chicken-and-egg problem the API alone can't resolve. `Person3_BackendAPI/src/scripts/
+seed.ts` is the one way in, run directly against the database instead of through the
+API (DECISIONS.md N18). It's idempotent — safe to run again later, it does nothing if
+a Super Admin already exists:
 
 ```bash
-docker compose exec backend node -e "
-const mongoose = require('mongoose');
-const bcrypt = require('bcryptjs');
-(async () => {
-  await mongoose.connect(process.env.MONGODB_URI || 'mongodb://mongo:27017/pnsm');
-  const roles = mongoose.connection.db.collection('roles');
-  const users = mongoose.connection.db.collection('users');
-  for (const role_name of ['Super Admin', 'Admin', 'Employee']) {
-    await roles.updateOne({ role_name }, { \$setOnInsert: { role_name, permissions: {} } }, { upsert: true });
-  }
-  const role = await roles.findOne({ role_name: 'Super Admin' });
-  const password_hash = await bcrypt.hash('ChangeMe123!', 12);
-  await users.updateOne(
-    { email: 'admin@pnsm.local' },
-    { \$setOnInsert: { name: 'Super Admin', email: 'admin@pnsm.local', password_hash, role_id: role._id, phone: '', department: 'HR', is_active: true, reference_photo_url: null, created_at: new Date(), updated_at: new Date() } },
-    { upsert: true },
-  );
-  console.log('Ready: admin@pnsm.local / ChangeMe123!');
-  await mongoose.disconnect();
-})();
-"
+docker compose exec backend node dist/scripts/seed.js
 ```
 
-Sign in with `admin@pnsm.local` / `ChangeMe123!`, then change the password from the
-console. This is a real, currently-unclosed gap (DECISIONS.md ROADMAP.md Phase 5 notes
-it explicitly) — a proper fix is a one-time seed script or a guarded first-run signup
-endpoint, neither of which exists yet.
+Prints the generated login once:
+
+```
+Super Admin account created.
+  email:    admin@pnsm.local
+  password: <a random one, shown only this once>
+This password is shown once. Store it securely and change it after first login.
+Roles ready: Super Admin, Admin, Employee.
+```
+
+Sign in with that email/password, then change the password from the console. Set
+`PNSM_SEED_ADMIN_EMAIL` and/or `PNSM_SEED_ADMIN_PASSWORD` (as extra `-e` flags on the
+`docker compose exec` call above) to choose your own instead of the generated default.
+
+Running this outside the container (`npm run seed` from `Person3_BackendAPI/`, e.g.
+for local dev without Docker) needs the same required env vars the server itself
+does — `MONGODB_URI`, `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET` — since the script
+imports the app's shared `config/env.ts`, which validates all of them eagerly at
+import time regardless of which ones the script itself actually uses.
 
 ## 3. Start Person 1 and Person 2 on the host
 
@@ -138,15 +136,16 @@ you're testing):
    similar enough to fall between the 60/85 bands, which two independently-generated
    synthetic faces won't reliably do — real employee photos will.
 
-### This has been run live, end to end — see DECISIONS.md N10-N17
+### This has been run live, end to end — see DECISIONS.md N10-N18
 
 This whole walkthrough, including the bootstrap step above, was executed for real
 against the actual running stack (ROADMAP.md Phase 5) — not just checked by
 inspection. Doing so found and fixed **eight real, previously-invisible bugs**, one of
 them severe enough that the mobile app had never successfully reached this backend at
 any point before (N15 — a router-mounting order bug that silently swallowed the
-entire `/api/mobile/*` family behind admin's auth gate). None of the eight were
-catchable by any test that existed before this pass, because no test in any quadrant
-had ever driven a real cross-service HTTP call before. Full details, root causes, and
-fixes are in [`DECISIONS.md`](./DECISIONS.md)'s N10-N17 entries — read those before
+entire `/api/mobile/*` family behind admin's auth gate) — and closed a ninth gap, the
+missing bootstrap path itself (N18, the seed script above). None of the eight bugs
+were catchable by any test that existed before this pass, because no test in any
+quadrant had ever driven a real cross-service HTTP call before. Full details, root
+causes, and fixes are in [`DECISIONS.md`](./DECISIONS.md)'s N10-N18 entries — read those before
 assuming any part of this pipeline "just works" without checking DECISIONS.md first.
