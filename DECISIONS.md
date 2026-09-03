@@ -564,3 +564,210 @@ idempotent paths both exercised against a real, empty-then-seeded database, not 
 the mocked unit tests). Confirmed separately that the real compose stack's own
 pre-existing admin login was unaffected throughout. Backend 132/132 after this
 addition (127 + 5 new), clean typecheck, clean build.
+
+---
+
+## Blueprint compliance audit (N19-N23)
+
+The user supplied the original architectural blueprint PDF and asked for a final,
+literal re-audit against it, with the explicit bar "there must not remain a single
+gap" within local-dev-complete scope. A 3-way parallel codebase audit checked every
+concrete requirement in the 12-page document against the actual code. Everything
+checked out already compliant except the five items below — 2dsphere/`$geoWithin`/
+`$centerSphere` with the exact 6,378,137m equatorial radius, path-to-regexp v8
+wildcard safety (zero unnamed wildcards anywhere, confirmed by grep), ESR-ordered
+compound indexes on `AttendanceLog`, helmet's `default-src 'self'`/`X-Frame-Options:
+DENY`, RBAC (`requirePermission`, not just `requireAuth`) on every admin mutation
+route, 0 `npm audit` vulnerabilities, React Router v7's `createBrowserRouter`, the
+Tailwind v4 Safari 16.3 `@supports` fallback, both backend and AI-service Dockerfiles
+already multi-stage, OWASP security headers on the AI service, CSFLE-style embedding
+encryption, the geofence radius slider, Capacitor plugin major-version parity, <200KB
+client-side selfie compression, and client-side mock-location rejection — were all
+independently re-confirmed correct with no changes needed.
+
+### N19 — Backend Dockerfile bumped from Node 20 to the blueprint's Node 24
+
+`Person3_BackendAPI/Dockerfile` used `node:20-alpine` in both the build and runtime
+stages. The blueprint specifies `node:24-slim` as the runtime — Alpine-vs-slim is a
+separate, already-settled question (B5: Alpine stays, since `bcryptjs` has zero native
+deps and Alpine's musl libc is a non-issue for this specific app; that reasoning is
+untouched by this entry). The version number itself was the real gap. This host's own
+`node --version` is v24.18.0, and every `npm test`/`npm run build` across this entire
+multi-session project has already run on Node 24 — the Docker image was the one place
+still pinned to 20.
+
+**Decision:** both `FROM node:20-alpine` lines → `node:24-alpine`. `package.json`'s
+`engines.node` `">=18.18.0"` → `">=20.0.0"` (Node 18 is EOL; not bumped all the way to
+24, since nothing in the code actually requires a Node-24-specific API — pinning the
+floor higher than what's actually justified would itself be a small new gap).
+
+Live-verified: `docker build` succeeded cleanly; `node --version` inside the built
+image reports v24.20.0; `bcryptjs` loads without error; the full compose stack rebuilt
+and came up healthy; a real login (`POST /api/auth/login` against the actual seeded
+Super Admin) succeeded, proving `bcrypt.compare()` — the one thing B5's whole
+reasoning hinges on — works correctly under `node:24-alpine`. Backend 132/132,
+unaffected. Image size: 277MB → 322MB (Node 24's larger runtime binary; expected, not
+a regression).
+
+### N20 — Person2_WebDashboard's Dockerfile built and verified for the first time; a real nginx security-header bug found and fixed
+
+`Person2_WebDashboard/Dockerfile` and `nginx.conf` were already blueprint-correct on
+paper (multi-stage `node:24-slim` builder → `nginx:alpine` runtime, non-root user,
+`try_files $uri $uri/ /index.html;` as the local equivalent of the blueprint's
+CloudFront-404 concern) — but had never once been built or run; Person2 has only ever
+run via `npm run dev` (a deliberate, unchanged decision from Phase 5 — it stays out of
+`docker-compose.yml`; this was standalone verification only).
+
+Building and smoke-testing it live surfaced a real, previously-undiscovered bug:
+`curl -I` against `/`, `/employees` (a deep link), and `/healthz` showed the
+`X-Frame-Options`/`X-Content-Type-Options`/`Referrer-Policy` headers — declared once,
+at the server level in `nginx.conf` — were **completely absent from every real
+response**. Root cause: nginx's `add_header` inheritance rule is that a `location`
+block inherits `add_header` directives from its parent ONLY if that location defines
+no `add_header` of its own — the moment a location adds even one header, it stops
+inheriting ALL of them, server-level ones included. `try_files`'s fallback to
+`/index.html` is an internal redirect that gets re-matched against location blocks,
+landing in `location = /index.html` — which already had its own `Cache-Control`
+`add_header` and therefore silently dropped the three security headers on literally
+every real page load. `location = /healthz` had the identical problem via its own
+`Content-Type` header. This meant the OWASP A02 security headers this file was
+explicitly written to enforce were never actually being sent by any response this
+server could produce.
+
+**Decision:** repeat all three security `add_header` lines explicitly inside every
+location block that sets its own headers (`location = /index.html`,
+`location /assets/`, `location = /healthz`), with a comment at the top of the file
+explaining nginx's inheritance rule so this doesn't silently regress again the next
+time someone adds a `location`-scoped header.
+
+Also added `Person2_WebDashboard/.dockerignore` (Person3 already had one; Person2
+didn't) so `COPY . .` doesn't pull `.env.local`, `.git`, `.github`, and markdown into
+the build context.
+
+Live-verified after the fix: rebuilt the image, ran it standalone, and confirmed via
+`curl -I` that all three headers are now present on `/`, `/employees`, and `/healthz`.
+`/employees` (a deep link with no matching file) returns **200** with the real
+`index.html` content, not a 404 — the SPA fallback genuinely works. `docker exec
+... whoami` confirms the container runs as `appuser`, not root. Final measured image
+size: **133MB**. This is above the blueprint's illustrative "<50MB" figure, but
+honestly explained rather than force-fit: this dashboard ships a real WebGL map
+(MapLibre GL), charting, and PDF/CSV export (`dist/assets/map-*.js` alone is ~800KB
+uncompressed) — functionality the blueprint's generic figure wasn't sized against. The
+structural pattern the blueprint actually cares about (multi-stage, Node/source
+discarded, tiny final base image) is fully achieved; the exact byte target was always
+somewhat illustrative for a feature-rich real app.
+
+Measured, for the record, alongside the above: `pnsm_khan_edit-ai-service` is
+**850MB**, unchanged by this pass — larger by nature (bundles onnxruntime and the
+ONNX model weights for real, cold-start-safe inference), not something to "fix."
+
+### N21 — Battery-optimization guidance consolidated and surfaced on the Home screen
+
+`Person1_MobileClient/src/lib/backgroundTelemetry.js` already had a correct,
+deliberately-scoped `getBatteryOptimizationGuidance()` — returns
+`{needed, guidanceUrl: "https://dontkillmyapp.com", note}` on Android, `null`
+elsewhere. Its own docstring already correctly explains why it stops there: the
+blueprint's literal ask ("programmatically prompt the user to whitelist the
+application") implies triggering the native `ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`
+intent, which Google Play Store policy restricts to apps with a documented,
+Play-Console-justified need — wiring that intent without one is a real store-rejection
+risk, correctly left as "team decision pending." That reasoning stands untouched.
+
+Correction to the audit's own first pass: `ProfileScreen.jsx` was *not* missing this
+entirely, as first reported — it already called the function and rendered a plain
+paragraph with the raw URL as unstyled text. What was genuinely missing: it wasn't a
+real clickable link, wasn't dismissible, and `HomeScreen.jsx` — the actual landing
+screen after login — didn't surface it at all.
+
+**Decision:** extracted a shared `Person1_MobileClient/src/components/
+BatteryOptimizationNotice.jsx` — renders nothing when guidance is `null`; otherwise a
+card with the real `note` text and a genuine `<a href target="_blank">` link; accepts
+a `dismissible` prop (plain local `useState`, no new persistence layer for a cosmetic
+flag). Mounted on `HomeScreen.jsx` (dismissible) and replaces the old inline paragraph
+in `ProfileScreen.jsx` (`dismissible={false}`, permanently findable there after being
+dismissed on Home). No changes to `getBatteryOptimizationGuidance()` itself or
+anything native-intent-related.
+
+Added test coverage that didn't exist before for the underlying function itself
+(`__tests__/telemetry.test.js`, mocking `Capacitor.getPlatform()` across all three
+platform branches) and a new `__tests__/batteryOptimizationNotice.test.jsx` (renders
+nothing on web/iOS, renders note+link+dismiss on Android, dismiss actually removes it,
+`dismissible={false}` never shows a dismiss button). Mobile suite: 68/68 (60 + 8 new).
+
+Live-verified the negative case only: dev server runs as `platform: "web"`, and the
+Browser pane confirmed the card renders on neither Home nor Profile there, matching
+the pre-existing behavior with no regression. The Android-positive render path can't
+be live-verified in this environment (no device/emulator) — the unit tests are the
+proof for that branch; stated here honestly rather than silently skipped.
+
+### N22 — Completed the native scaffold's missing companion class; surfaced a real, unresolved credential problem
+
+`Person1_MobileClient/native/PnsmForegroundService.java` is an honestly-labeled,
+never-compiled "STATUS: SCAFFOLD — NOT WIRED UP" reference file (no `android/`
+project folder exists — `npx cap add android` was never run, correctly, since native
+builds are explicitly out of local-dev-complete scope). It calls
+`PnsmTelemetryUploader.enqueue(Context, double, double, float, long, boolean)` — a
+class that, confirmed via Glob, did not exist anywhere in the repo.
+
+Investigating what it should actually do surfaced a real architecture fact worth
+recording on its own: `Person1_MobileClient/src/lib/http.js` deliberately keeps the
+mobile app's access token in-memory-only, by design, specifically so a short-lived
+token can't be read back off disk — confirmed no code anywhere in `src/` ever writes
+anything to `@capacitor/preferences`. This means **native Java code currently has no
+way to obtain a valid token** for an authenticated background upload. This is not a
+bug to quietly work around; it's a genuine, unresolved boundary between "background
+telemetry needs a durable credential" and "the access token is deliberately
+non-durable," and closing it needs a separate, deliberate decision (e.g. a distinct,
+narrowly-scoped, independently-revocable background-upload credential minted at
+login) — explicitly out of scope for a scaffold file to invent unilaterally.
+
+**Decision:** new `Person1_MobileClient/native/PnsmTelemetryUploader.java`, matching
+its sibling's exact "STATUS: SCAFFOLD" header convention and tone. Drops a
+`mocked: true` fix immediately, before any network activity (the heartbeat schema has
+no field to carry that flag server-side anyway, and the sibling file's own comment
+already says a spoofed fix must never be silently persisted). Reads a token from
+`SharedPreferences("CapacitorStorage", ...)` — the real, verified group name
+`@capacitor/preferences`' own Android plugin source uses
+(`PreferencesConfiguration.java: DEFAULTS.group = "CapacitorStorage"`) — with a header
+comment stating plainly that this will always be `null` today, why, and what a real
+fix requires; logs and returns rather than sending a guaranteed-401 request when no
+token is found. When a token *is* available (future-proofing the design once the
+credential problem is resolved): enqueues a `WorkManager` `OneTimeWorkRequest`
+(`NetworkType.CONNECTED`, exponential backoff via the real
+`WorkRequest.MIN_BACKOFF_MILLIS` constant) running a nested `HeartbeatUploadWorker`
+that POSTs `{lat, lng, accuracy, timestamp}` — cross-checked field-for-field against
+both `Person3_BackendAPI/src/validation/mobileSchemas.ts`'s `mobileHeartbeatSchema`
+and `backgroundTelemetry.js`'s own `sendHeartbeat()` body, confirmed identical — to
+`{API_BASE_URL}/api/mobile/heartbeat` with `Authorization: Bearer <token>`, using only
+Android SDK built-ins (`HttpURLConnection`, `org.json.JSONObject`) plus
+`androidx.work:work-runtime` (the one new Gradle dependency, called out the same way
+the sibling file calls out `play-services-location`). A 401 returns `Result.failure()`
+(a background `Worker` has no HttpOnly cookie jar to run the refresh dance against);
+a 5xx or network error returns `Result.retry()`.
+
+Cannot be compiled or run here (no Android SDK, no `android/` folder — same stated
+limitation as its sibling file). What was actually checked: the JSON field
+names/types match the real Zod schema and the JS heartbeat body exactly (read side by
+side), the `SharedPreferences` group name matches the real plugin source exactly, and
+the method signature matches `PnsmForegroundService.java`'s existing call site
+exactly. Stated plainly: scaffold-level, not tested, same as its sibling.
+
+### N23 — Cross-reference: Person4's face-match threshold is a calibrated confidence percentage, not a literal raw cosine comparison
+
+Not a fix — a documentation cross-reference for consistency with how every other
+blueprint-vs-implementation nuance in this project has been recorded. The blueprint's
+wording ("If the resultant geometric similarity score evaluates to 85% or higher...")
+reads as a literal `cosine_similarity >= 0.85` comparison. Person4_AIBiometricService
+implements the 85% figure correctly as the named threshold
+(`PNSM_APPROVE_THRESHOLD`, default `85.0`) — but architecturally as a *calibrated
+confidence percentage* derived via a fitted sigmoid mapping
+(`app/ai/calibration.py:57`, `cosine_for_confidence()`), not a literal raw cosine
+comparison. `app/ai/score.py`'s own module docstring explains why directly: "the
+whole point of this module is that `confidence` is *not* `cosine * 100`. ArcFace does
+not put genuine pairs above 0.85 raw cosine... multiplying raw cosine by 100 and
+demanding 85 would reject nearly everyone." This is the objectively more correct
+approach — a surface-literal reading of the blueprint's wording would produce a
+system that rejects real, matching employees — and was already fully justified in the
+AI service's own code comments before this session ever started. This entry exists
+purely so a future reader cross-referencing the blueprint against DECISIONS.md finds
+the explanation here too, rather than only in `app/ai/score.py`.

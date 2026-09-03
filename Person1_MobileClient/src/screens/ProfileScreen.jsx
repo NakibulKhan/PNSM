@@ -2,12 +2,12 @@ import React from "react";
 import { useApp } from "../state/AppContext";
 import { clearAccessToken } from "../lib/http";
 import { logoutMobile } from "../lib/api";
-import { stopTelemetry, getTelemetryCapability, getBatteryOptimizationGuidance } from "../lib/backgroundTelemetry";
+import { stopTelemetry, getTelemetryCapability } from "../lib/backgroundTelemetry";
+import BatteryOptimizationNotice from "../components/BatteryOptimizationNotice";
 
 export default function ProfileScreen() {
   const { state, dispatch } = useApp();
   const telemetry = getTelemetryCapability();
-  const battery = getBatteryOptimizationGuidance();
 
   if (!state.employee || !state.office) return null;
 
@@ -62,11 +62,7 @@ export default function ProfileScreen() {
             : "Tracking runs only while the app is open."}
         </p>
         <p className="mt-1 text-xs text-on-surface-variant">{telemetry.reason}</p>
-        {battery?.needed && (
-          <p className="mt-2 text-xs text-warning-amber">
-            Your device may restrict background activity. See {battery.guidanceUrl}.
-          </p>
-        )}
+        <BatteryOptimizationNotice dismissible={false} />
       </div>
 
       <button

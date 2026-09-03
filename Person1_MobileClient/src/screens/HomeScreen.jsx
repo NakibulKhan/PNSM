@@ -1,6 +1,7 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import { useApp } from "../state/AppContext";
+import BatteryOptimizationNotice from "../components/BatteryOptimizationNotice";
 
 function formatLogTime(iso) {
   return new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
@@ -67,6 +68,8 @@ export default function HomeScreen() {
           {checkedInAt ? "Check out" : "Check in"}
         </button>
       </section>
+
+      <BatteryOptimizationNotice />
 
       <section className="mt-6">
         <h2 className="mb-3 font-display text-lg text-text-navy">Recent check-ins</h2>

@@ -4,7 +4,7 @@
   "private": true,
   "description": "PNSM Workforce Management System — backend (Person 3 scope).",
   "engines": {
-    "node": ">=18.18.0"
+    "node": ">=20.0.0"
   },
   "main": "dist/server.js",
   "scripts": {

@@ -1,5 +1,11 @@
-import { describe, it, expect } from "vitest";
-import { isWithinTrackingWindow, backoffMs, DEFAULT_HEARTBEAT_MS } from "../src/lib/backgroundTelemetry";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+
+const getPlatform = vi.fn();
+vi.mock("@capacitor/core", () => ({ Capacitor: { getPlatform: (...args) => getPlatform(...args) } }));
+
+const { isWithinTrackingWindow, backoffMs, DEFAULT_HEARTBEAT_MS, getBatteryOptimizationGuidance } = await import(
+  "../src/lib/backgroundTelemetry"
+);
 
 const SHIFT = { startHour: 9, endHour: 18, days: [1, 2, 3, 4, 5] };
 
@@ -37,5 +43,29 @@ describe("backoffMs", () => {
   });
   it("caps the backoff so it always eventually retries", () => {
     expect(backoffMs(50)).toBe(10 * 60 * 1000);
+  });
+});
+
+describe("getBatteryOptimizationGuidance", () => {
+  beforeEach(() => getPlatform.mockReset());
+
+  it("returns dontkillmyapp.com guidance on Android", () => {
+    getPlatform.mockReturnValue("android");
+    const guidance = getBatteryOptimizationGuidance();
+    expect(guidance).toEqual({
+      needed: true,
+      guidanceUrl: "https://dontkillmyapp.com",
+      note: expect.stringContaining("ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"),
+    });
+  });
+
+  it("returns null on web (no OEM battery killer to whitelist against)", () => {
+    getPlatform.mockReturnValue("web");
+    expect(getBatteryOptimizationGuidance()).toBeNull();
+  });
+
+  it("returns null on iOS (this is an Android-only OEM problem)", () => {
+    getPlatform.mockReturnValue("ios");
+    expect(getBatteryOptimizationGuidance()).toBeNull();
   });
 });
