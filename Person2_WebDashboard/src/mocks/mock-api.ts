@@ -35,12 +35,58 @@ export interface MockResult {
 }
 
 /**
- * Demo session state, standing in for the HttpOnly refresh cookie that Express
- * would set. It is module-scoped rather than stored anywhere the browser can
- * read, mirroring the real property that JavaScript cannot reach the cookie.
+ * Demo session state, standing in for the HttpOnly refresh cookie Express would
+ * set.
+ *
+ * WHY sessionStorage AND NOT A MODULE VARIABLE
+ * --------------------------------------------
+ * This used to be a plain module-scoped variable. That made demo mode diverge
+ * from the real system in exactly the place the E2E suite tests: a real refresh
+ * cookie is held by the BROWSER and therefore survives a reload or a hard
+ * navigation to a deep link, so `bootstrapSession()` silently restores the
+ * session. A module variable dies with the JS context, so every reload 401'd
+ * and dumped the user at /login — and five Playwright specs (including the one
+ * whose entire purpose is the deep-link regression) failed for a reason that
+ * does not exist in production. Found by the final master audit, on the suite's
+ * first-ever run.
+ *
+ * sessionStorage matches the real cookie's lifetime closely: it survives reload
+ * and in-tab navigation, and it dies when the tab closes.
+ *
+ * What is stored is ONLY the fact that a session exists, plus which user it is
+ * for — the same information the opaque cookie represents. No token is ever
+ * written here: access tokens are still minted in memory, per request, by
+ * `makeDemoAccessToken`. The production invariant ("no token in web storage")
+ * is untouched, and none of this code ships outside demo mode.
  */
-let demoSessionActive = false;
-let demoSessionUserId = '';
+const DEMO_SESSION_KEY = 'pnsm-demo-session';
+
+function readDemoSession(): string {
+  try {
+    return sessionStorage.getItem(DEMO_SESSION_KEY) ?? '';
+  } catch {
+    // Private mode, blocked storage, or a non-DOM context (unit tests).
+    return '';
+  }
+}
+
+function writeDemoSession(userId: string): void {
+  try {
+    if (userId) sessionStorage.setItem(DEMO_SESSION_KEY, userId);
+    else sessionStorage.removeItem(DEMO_SESSION_KEY);
+  } catch {
+    // Non-fatal: falls back to the in-memory value below.
+  }
+}
+
+let demoSessionUserId = readDemoSession();
+let demoSessionActive = Boolean(demoSessionUserId);
+
+function setDemoSession(userId: string): void {
+  demoSessionUserId = userId;
+  demoSessionActive = Boolean(userId);
+  writeDemoSession(userId);
+}
 
 /**
  * Mint a structurally valid, UNSIGNED JWT for demo mode.
@@ -73,8 +119,7 @@ function db(): SeedData {
 /** Exposed for tests and for the "reset demo data" control in Settings. */
 export function resetMockStore(): void {
   store = buildSeed(new Date());
-  demoSessionActive = false;
-  demoSessionUserId = '';
+  setDemoSession('');
 }
 
 const ok = (data: unknown, meta?: unknown): MockResult => ({
@@ -239,8 +284,7 @@ export function handleMockRequest(
       if (roleKey === 'employee') {
         return fail(403, 'NOT_ADMIN', 'This portal is for HR and Super Admin accounts. Employees use the mobile app.');
       }
-      demoSessionActive = true;
-      demoSessionUserId = user._id;
+      setDemoSession(user._id);
       /*
        * Only the access token is returned in the body. The refresh token would
        * be delivered as an HttpOnly Set-Cookie header by Express, which is why
@@ -265,7 +309,9 @@ export function handleMockRequest(
     }
 
     if (second === 'logout' && method === 'POST') {
-      demoSessionActive = false;
+      // Clears the simulated cookie too — otherwise a reload after sign-out
+      // would silently sign the user back in.
+      setDemoSession('');
       return ok({ signedOut: true });
     }
 

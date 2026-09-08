@@ -23,4 +23,9 @@ export type {
   PresignPutResult,
   PresignGetResult,
   DecisionBands,
+  LivenessColor,
+  LivenessFrame,
+  LivenessChallengeParams,
+  LivenessChallengeResult,
+  PassivePadResult,
 } from './pnsmAiClient';

@@ -24,5 +24,6 @@
     "paths": { "@/*": ["./src/*"] }
   },
   "include": ["src", "vite.config.ts", "playwright.config.ts"],
-  "exclude": ["node_modules", "dist", "src/e2e"]
+  "//": "src/e2e is deliberately NOT excluded. It used to be, and the result was that two Playwright assertions broke during the Bento migration and no gate could see it — `npm run verify` typechecked every file except the ones asserting on the UI it was verifying.",
+  "exclude": ["node_modules", "dist"]
 }

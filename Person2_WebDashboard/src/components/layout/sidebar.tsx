@@ -45,22 +45,27 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
 
   return (
     <>
+      {/* A dimming scrim must always darken, in either theme — bg-black, not the
+          theme-adaptive bg-ink (which is near-white by default now). */}
       <div
         onClick={onClose}
         aria-hidden
         className={cn(
-          'fixed inset-0 z-30 bg-ink/45 transition-opacity lg:hidden',
+          'fixed inset-0 z-30 bg-black/45 transition-opacity lg:hidden',
           open ? 'opacity-100' : 'pointer-events-none opacity-0',
         )}
       />
 
+      {/* Nav rail chrome stays dark regardless of [data-theme] (same reasoning as
+          login.tsx's brand panel) — bg-ink/border-ink-line would otherwise invert
+          with the app's theme and leave white-on-white text. */}
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-40 flex w-[236px] flex-col bg-ink text-white transition-transform duration-200 lg:translate-x-0',
+          'fixed inset-y-0 left-0 z-40 flex w-[236px] flex-col bg-[#0f1b2d] text-white transition-transform duration-200 lg:translate-x-0',
           open ? 'translate-x-0' : '-translate-x-full',
         )}
       >
-        <div className="flex items-center justify-between border-b border-ink-line px-4 py-3.5">
+        <div className="flex items-center justify-between border-b border-white/10 px-4 py-3.5">
           <div className="min-w-0">
             <p className="text-[13.5px] font-semibold tracking-[-0.01em]">PNSM Command</p>
             <p className="mt-0.5 text-[10.5px] tracking-[0.06em] text-white/45">
@@ -125,7 +130,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
           })}
         </nav>
 
-        <div className="border-t border-ink-line px-4 py-3">
+        <div className="border-t border-white/10 px-4 py-3">
           <p className="text-[10.5px] leading-relaxed text-white/40">
             Group 8 · CSE482L
             <br />

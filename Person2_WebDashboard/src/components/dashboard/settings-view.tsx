@@ -1,6 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
-import { Card, CardBody, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { BentoGrid } from '@/components/bento/BentoGrid';
+import { BentoTile } from '@/components/bento/BentoTile';
+import { TileHeader } from '@/components/bento/TileHeader';
 import { useSession } from '@/auth/auth-context';
 import { fetchData } from '@/api/client';
 import { queryKeys } from '@/lib/query-keys';
@@ -25,32 +27,30 @@ export function SettingsView() {
   });
 
   return (
-    <div className="grid gap-4 lg:grid-cols-2">
-      <Card>
-        <CardHeader title="Your account" />
-        <CardBody>
-          <dl className="space-y-2.5">
-            {[
-              ['Name', user?.name ?? '—'],
-              ['Email', user?.email ?? '—'],
-              ['Role', user ? ROLE_LABEL[user.role] : '—'],
-              ['Timezone', APP_TIMEZONE],
-            ].map(([label, value]) => (
-              <div key={label} className="flex items-center justify-between gap-3">
-                <dt className="eyebrow">{label}</dt>
-                <dd className="text-[12.5px] text-ink">{value}</dd>
-              </div>
-            ))}
-          </dl>
-        </CardBody>
-      </Card>
+    <BentoGrid>
+      <BentoTile rank="square">
+        <TileHeader title="Your account" />
+        <dl className="flex-1 space-y-2.5 p-4 pt-2">
+          {[
+            ['Name', user?.name ?? '—'],
+            ['Email', user?.email ?? '—'],
+            ['Role', user ? ROLE_LABEL[user.role] : '—'],
+            ['Timezone', APP_TIMEZONE],
+          ].map(([label, value]) => (
+            <div key={label} className="flex items-center justify-between gap-3">
+              <dt className="eyebrow">{label}</dt>
+              <dd className="text-[12.5px] text-ink">{value}</dd>
+            </div>
+          ))}
+        </dl>
+      </BentoTile>
 
-      <Card>
-        <CardHeader
+      <BentoTile rank="square">
+        <TileHeader
           title="What your role can do"
-          description="Enforced by the API as well as hidden in this interface."
+          support="Enforced by the API as well as hidden in this interface."
         />
-        <CardBody>
+        <div className="flex-1 p-4 pt-2">
           <div className="flex flex-wrap gap-1.5">
             {(user ? ROLE_PERMISSIONS[user.role] : []).map((permission) => (
               <Badge key={permission} tone="neutral">
@@ -58,45 +58,43 @@ export function SettingsView() {
               </Badge>
             ))}
           </div>
-        </CardBody>
-      </Card>
+        </div>
+      </BentoTile>
 
-      <Card>
-        <CardHeader title="Verification rules" description="Set globally by the Super Admin." />
-        <CardBody>
-          <dl className="space-y-2.5">
-            <div className="flex items-center justify-between gap-3">
-              <dt className="eyebrow">Auto-approval threshold</dt>
-              <dd className="tnum text-[13px] font-semibold text-verified">{FACE_MATCH_THRESHOLD}%</dd>
-            </div>
-            <div className="flex items-center justify-between gap-3">
-              <dt className="eyebrow">Mock-location check-ins</dt>
-              <dd>
-                <Badge tone="rejected">Blocked</Badge>
-              </dd>
-            </div>
-            <div className="flex items-center justify-between gap-3">
-              <dt className="eyebrow">Data source</dt>
-              <dd>
-                {IS_DEMO ? <Badge tone="flagged">Demo data</Badge> : <Badge tone="verified">Live API</Badge>}
-              </dd>
-            </div>
-          </dl>
-        </CardBody>
-      </Card>
+      <BentoTile rank="square">
+        <TileHeader title="Verification rules" support="Set globally by the Super Admin." />
+        <dl className="flex-1 space-y-2.5 p-4 pt-2">
+          <div className="flex items-center justify-between gap-3">
+            <dt className="eyebrow">Auto-approval threshold</dt>
+            <dd className="tnum text-[13px] font-semibold text-verified">{FACE_MATCH_THRESHOLD}%</dd>
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <dt className="eyebrow">Mock-location check-ins</dt>
+            <dd>
+              <Badge tone="rejected">Blocked</Badge>
+            </dd>
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <dt className="eyebrow">Data source</dt>
+            <dd>
+              {IS_DEMO ? <Badge tone="flagged">Demo data</Badge> : <Badge tone="verified">Live API</Badge>}
+            </dd>
+          </div>
+        </dl>
+      </BentoTile>
 
-      <Card>
-        <CardHeader
+      <BentoTile rank="square">
+        <TileHeader
           title="Spoofing alerts"
-          description="Blocked attempts to check in from a faked location"
+          support="Blocked attempts to check in from a faked location"
         />
-        <CardBody>
+        <div className="min-h-0 flex-1 overflow-y-auto p-4 pt-2">
           {!alerts || alerts.length === 0 ? (
             <p className="text-[12.5px] text-muted">No spoofing attempts recorded.</p>
           ) : (
             <ul className="space-y-2.5">
               {alerts.map((alert) => (
-                <li key={alert._id} className="border-b border-line pb-2.5 last:border-b-0 last:pb-0">
+                <li key={alert._id} className="border-b border-hairline pb-2.5 last:border-b-0 last:pb-0">
                   <div className="flex items-start justify-between gap-2">
                     <p className="text-[12.5px] font-semibold text-ink">{alert.employee_name}</p>
                     <Badge tone="rejected">Blocked</Badge>
@@ -109,8 +107,8 @@ export function SettingsView() {
               ))}
             </ul>
           )}
-        </CardBody>
-      </Card>
-    </div>
+        </div>
+      </BentoTile>
+    </BentoGrid>
   );
 }

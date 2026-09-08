@@ -27,7 +27,11 @@ test.describe('PNSM Command Center', () => {
 
   test('HR can sign in and read the dashboard', async ({ page }) => {
     await signIn(page);
-    await expect(page.getByText('Checked in today')).toBeVisible();
+    // 'Present now' since the Bento migration — this asserted 'Checked in today'
+    // (the pre-migration KPI card label) and had been silently failing, because
+    // this suite had never once been executed. The underlying data field is
+    // still `checkedInToday`; only the rendered label changed.
+    await expect(page.getByText('Present now')).toBeVisible();
     await expect(page.getByText('Avg face match')).toBeVisible();
     await expect(page.getByRole('heading', { name: /live check-in feed/i })).toBeVisible();
   });
@@ -42,7 +46,12 @@ test.describe('PNSM Command Center', () => {
     await page.goto('/employees');
     await page.reload();
     await expect(page).toHaveURL(/\/employees/);
-    await expect(page.getByRole('heading', { name: 'Employees' })).toBeVisible();
+    // `exact: true` matters: Playwright's `name` is a case-insensitive SUBSTRING
+    // match by default, and the Bento migration added an `sr-only` <h3>"Filter
+    // employees"</h3> to the filter rail. sr-only is a clip technique, not
+    // display:none, so it stays in the accessibility tree and this locator
+    // resolved to two elements — a strict-mode violation, not a miss.
+    await expect(page.getByRole('heading', { name: 'Employees', exact: true })).toBeVisible();
   });
 
   test('the WebGL geofence map initialises and reports coordinates', async ({ page }) => {
@@ -80,6 +89,7 @@ test.describe('PNSM Command Center', () => {
     await expect(page).toHaveURL(/\/dashboard/);
 
     await page.getByRole('button', { name: 'Sign out' }).click();
+    await expect(page).toHaveURL(/\/login/);
     await signIn(page, 'Super Admin');
     await page.goto('/billing');
     await expect(page.getByRole('heading', { name: 'Billing' })).toBeVisible();

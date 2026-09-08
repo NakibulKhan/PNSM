@@ -5,7 +5,7 @@
  * verification threshold, geofence radius, live telemetry — rather than generic
  * product copy. It is the first place the instrument-panel language appears.
  */
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -69,9 +69,15 @@ export default function LoginPage() {
     setValue('password', 'demo1234');
   };
 
+  const headingId = useId();
+
   return (
-    <div className="grid min-h-screen lg:grid-cols-[1fr_460px]">
-      <section className="relative hidden flex-col justify-between bg-ink px-10 py-12 text-white lg:flex">
+    <div className="split-grid grid min-h-screen lg:grid-cols-[1fr_460px]">
+      {/* Always-dark brand panel, independent of the app's [data-theme] — bg-ink used to be
+          safe here because the app was light-default and --color-ink was a near-black text
+          colour; now that dark is the operator default and --color-ink means "text on a dark
+          surface" (near-white), this panel needs its own literal, theme-independent dark. */}
+      <section className="split-main relative hidden flex-col justify-between bg-[#0f1b2d] px-10 py-12 text-white lg:flex">
         <div>
           <p className="text-[13.5px] font-semibold tracking-[-0.01em]">PNSM Command Center</p>
           <p className="mt-0.5 text-[10.5px] tracking-[0.09em] text-white/45">
@@ -111,16 +117,19 @@ export default function LoginPage() {
         </p>
       </section>
 
-      <section className="flex flex-col justify-center px-6 py-12 sm:px-12">
+      <section
+        aria-labelledby={headingId}
+        className="split-aside flex flex-col justify-center px-6 py-12 sm:px-12"
+      >
         <div className="mx-auto w-full max-w-sm">
           <div className="mb-7 lg:hidden">
             <p className="text-[15px] font-semibold text-ink">PNSM Command Center</p>
-            <p className="mt-0.5 text-[10.5px] tracking-[0.09em] text-faint">
-              WORKFORCE ATTENDANCE
-            </p>
+            <p className="mt-0.5 text-[10.5px] tracking-[0.09em] text-faint">WORKFORCE ATTENDANCE</p>
           </div>
 
-          <h2 className="text-[20px] font-semibold tracking-[-0.015em] text-ink">Sign in</h2>
+          <h2 id={headingId} className="text-[20px] font-semibold tracking-[-0.015em] text-ink">
+            Sign in
+          </h2>
           <p className="mb-6 mt-1 text-[12.5px] text-muted">
             For HR and Super Admin accounts. Employees check in from the mobile app.
           </p>

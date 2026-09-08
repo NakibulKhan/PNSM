@@ -6,6 +6,7 @@ import { requirePermission } from '../../middleware/rbac';
 import { adminOk } from '../../responses/adminResponse';
 import { updatePolicySchema } from '../../validation/policySchemas';
 import * as superAdminService from '../../services/superAdminService';
+import { listIncidents } from '../../services/incidentService';
 
 const router = Router();
 
@@ -33,6 +34,15 @@ router.get(
   requirePermission('audit:read'),
   asyncHandler(async (_req, res) => {
     const result = await superAdminService.listSpoofAlerts();
+    adminOk(res, result.rows, { page: result.page, pageSize: result.pageSize, total: result.total });
+  }),
+);
+
+router.get(
+  '/admins/incidents',
+  requirePermission('audit:read'),
+  asyncHandler(async (_req, res) => {
+    const result = await listIncidents();
     adminOk(res, result.rows, { page: result.page, pageSize: result.pageSize, total: result.total });
   }),
 );

@@ -98,6 +98,30 @@ class VerifyRequest(Strict):
     device: DeviceModel = Field(default_factory=DeviceModel)
 
 
+LIVENESS_COLOR = Literal["red", "green", "blue", "white"]
+
+
+class LivenessFrameModel(Strict):
+    """One captured frame, timed to a screen-flash color the client displayed."""
+
+    color: LIVENESS_COLOR
+    image: ImageRefModel
+
+
+class LivenessChallengeRequest(Strict):
+    """Item 3 (Flawless/Ultra blueprint): active-illumination liveness.
+
+    Not ISO/IEC 30107-3 certified -- that needs a real accredited lab. This is
+    a genuine, own-built PAD signal: the client flashes 2-4 randomized screen
+    colors and captures one frame per flash; this endpoint checks whether the
+    frames' color response actually correlates with the reported flash.
+    """
+
+    user_ref: USER_REF
+    request_id: ULID
+    frames: list[LivenessFrameModel] = Field(min_length=2, max_length=4)
+
+
 class PinHashRequest(Strict):
     user_ref: USER_REF
     pin: str = Field(min_length=1, max_length=32)
@@ -170,6 +194,19 @@ class EmbedResponse(BaseModel):
     timings_ms: dict[str, float]
 
 
+class PassivePadModel(BaseModel):
+    """Item 3b (Flawless/Ultra blueprint): moire/edge-sharpness heuristics.
+
+    A real but uncertified PAD signal (classical CV, not a trained model, not
+    ISO/IEC 30107-3 certified) -- see app/ai/passive_pad.py. Recorded
+    alongside the match, never used alone to reject a check-in.
+    """
+
+    moire_energy_ratio: float = Field(ge=0, le=1, description="Higher is more suspicious (periodic screen/print pattern).")
+    edge_sharpness: float = Field(ge=0, description="Laplacian variance; very low suggests a soft print or replay.")
+    confidence: float = Field(ge=0, le=100, description="Combined heuristic score. Not a certified detection rate.")
+
+
 class VerifyResponse(BaseModel):
     decision: Literal["approved", "flagged", "rejected"]
     confidence: float = Field(ge=0, le=100, description="Calibrated confidence, the FR-07 number.")
@@ -180,10 +217,17 @@ class VerifyResponse(BaseModel):
         description="True when Person 3 should push a WebSocket alert to the HR dashboard."
     )
     quality: QualityModel
+    passive_pad: PassivePadModel
     model_version: str
     image_hash: str
     capture_skew_s: float
     latency_ms: dict[str, float]
+
+
+class LivenessChallengeResponse(BaseModel):
+    passed: bool
+    confidence: float = Field(ge=0, le=100, description="Mean per-frame color-correlation score. Not a certified detection rate.")
+    per_frame_scores: list[float] = Field(description="One 0-100 correlation score per submitted frame, in the order sent.")
 
 
 class PinHashResponse(BaseModel):

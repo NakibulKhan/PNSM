@@ -1,5 +1,5 @@
 import axios from "axios";
-import { http, API_BASE_URL, setAccessToken } from "./http";
+import { http, API_BASE_URL, setAccessToken, setRefreshToken } from "./http";
 
 /**
  * PNSM mobile API client.
@@ -76,6 +76,11 @@ export async function loginMobile(employeeCode, password) {
     password,
   });
   setAccessToken(res.data.access_token);
+  // Keep the refresh token too (memory only). The server's refresh cookie is
+  // pinned to path=/api/auth and so can never reach /api/mobile/auth/refresh —
+  // this body copy is the only thing that keeps a session alive past 15
+  // minutes. See the header comment in lib/http.js.
+  setRefreshToken(res.data.refresh_token);
   return res.data.user;
 }
 
@@ -141,7 +146,7 @@ export function buildCheckinPayload(payload) {
     gps: { lat: payload.gps.lat, lng: payload.gps.lng },
     geofence_id: payload.geofence_id,
     pin: payload.pin,
-    liveness_passed: payload.liveness_passed,
+    liveness_frames: payload.liveness_frames,
     object_key: payload.object_key,
     device: payload.device,
   };
@@ -207,7 +212,11 @@ function mockSubmitCheckin(payload) {
         resolve({ status: "rejected", reason: "mock_location_detected", face_match_score: null });
         return;
       }
-      if (payload.liveness_passed === false) {
+      // The mock has no real camera frames to run correlation on, so it
+      // simulates the server's fail-closed behavior: too few captured frames
+      // (camera denied, or the challenge never completed) is treated exactly
+      // like a real backend would treat a malformed/insufficient request.
+      if (!Array.isArray(payload.liveness_frames) || payload.liveness_frames.length < 2) {
         resolve({ status: "rejected", reason: "liveness_failed", face_match_score: null });
         return;
       }

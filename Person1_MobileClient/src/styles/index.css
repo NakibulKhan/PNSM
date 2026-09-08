@@ -3,52 +3,14 @@
 /* ---------------------------------------------------------------------------
    Tailwind CSS v4 — CSS-first configuration.
    There is intentionally NO tailwind.config.js in this project. v4's Oxide
-   engine reads design tokens from this @theme block and generates utility
-   classes from them (e.g. --color-text-navy => bg-text-navy / text-text-navy).
-   Token values are carried over verbatim from the team's approved PNSM
-   mockups so the Capacitor build is visually identical to the web design.
+   engine reads design tokens from ./theme.css's @theme block and generates
+   utility classes from them (e.g. --color-text-navy => bg-text-navy /
+   text-text-navy). See that file for the Bento redesign's dark-default token
+   table and naming rationale (PNSM_Bento_Frontend_Master_Prompt.md §4.2,
+   §6.11) — this app now shares one palette with Person2_WebDashboard.
    --------------------------------------------------------------------------- */
-@theme {
-  --color-primary: #000f22;
-  --color-primary-container: #0a2540;
-  --color-on-primary: #ffffff;
-  --color-on-primary-container: #768dad;
-  --color-text-navy: #0a2540;
-
-  --color-secondary: #00677f;
-  --color-secondary-container: #00ccf9;
-  --color-on-secondary-container: #005266;
-  --color-tertiary-container: #002547;
-
-  --color-ai-accent: #00d1ff;
-  --color-success-emerald: #10b981;
-  --color-error: #ba1a1a;
-  --color-error-container: #ffdad6;
-  --color-warning-amber: #f59e0b;
-  --color-warning-container: #fef3c7;
-
-  --color-background: #f7f9fb;
-  --color-surface: #f7f9fb;
-  --color-surface-bright: #f7f9fb;
-  --color-surface-container-lowest: #ffffff;
-  --color-surface-container-low: #f2f4f6;
-  --color-surface-container: #eceef0;
-  --color-surface-container-high: #e6e8ea;
-  --color-surface-container-highest: #e0e3e5;
-  --color-surface-border: #e2e8f0;
-
-  --color-on-surface: #191c1e;
-  --color-on-surface-variant: #43474d;
-  --color-outline: #74777e;
-  --color-outline-variant: #c4c6ce;
-
-  --font-display: "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif;
-  --font-body: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
-
-  --radius-lg: 0.5rem;
-  --radius-xl: 0.75rem;
-}
+@import "./theme.css";
+@import "./bento.css";
 
 /* ---------------------------------------------------------------------------
    Safari 16.3 / older WebKit resilience.

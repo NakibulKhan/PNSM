@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useId, useState } from "react";
 import { useApp } from "../state/AppContext";
 import { loginMobile, fetchMobileProfile } from "../lib/api";
 
@@ -41,16 +41,23 @@ export default function LoginScreen() {
     }
   }
 
+  const headingId = useId();
+
   return (
     <div className="flex min-h-full flex-col justify-center px-6 py-10">
       <div className="mb-8 text-center">
-        <h1 className="font-display text-4xl font-bold text-text-navy">PNSM</h1>
+        <h1 id={headingId} className="font-display text-4xl font-bold text-text-navy">
+          PNSM
+        </h1>
         <p className="mt-1 text-sm tracking-wide text-on-surface-variant">
           SECURE WORKFORCE PORTAL
         </p>
       </div>
 
-      <div className="rounded-xl border border-surface-border bg-surface-container-lowest p-6">
+      <div
+        aria-labelledby={headingId}
+        className="rounded-xl border border-surface-border bg-surface-container-lowest p-6"
+      >
         <label className="mb-1 block font-mono text-[11px] uppercase text-on-surface-variant">
           Employee ID
         </label>

@@ -5,7 +5,9 @@ import reactRefresh from 'eslint-plugin-react-refresh';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  { ignores: ['dist', 'node_modules', 'src/e2e', 'coverage', 'playwright-report'] },
+  // 'src/e2e' is deliberately NOT ignored — it was, and that is part of why two
+  // broken Playwright assertions survived the Bento migration unnoticed.
+  { ignores: ['dist', 'node_modules', 'coverage', 'playwright-report'] },
   {
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
     files: ['**/*.{ts,tsx}'],

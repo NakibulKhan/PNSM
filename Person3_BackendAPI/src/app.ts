@@ -16,10 +16,26 @@ import cookieParser from 'cookie-parser';
 import routes from './routes';
 import { notFoundHandler, errorHandler } from './middleware/errorHandler';
 import { ALLOWED_ORIGINS } from './config/env';
+import { createRateLimiter } from './middleware/rateLimiter';
+import { incidentBlocklistGuard } from './middleware/incidentBlocklist';
 
 export function createApp(): Express {
   const app = express();
   app.disable('x-powered-by');
+
+  // Required for `req.ip`/rate limiting/the incident blocklist to see the
+  // REAL client address once traffic can arrive via infra/tls-proxy
+  // (Item 8) — nginx sets X-Forwarded-For correctly, but Express ignores
+  // that header entirely without this, so every proxied request collapsed
+  // onto the proxy container's own IP as far as every IP-keyed system was
+  // concerned (one shared rate-limit/incident-blocklist bucket for all
+  // traffic through :8443). Scoped to Express's built-in private-network
+  // preset — NOT `true` (trust every hop) — because :5000 also still
+  // accepts direct, unproxied connections as the primary dev workflow;
+  // trusting the header unconditionally would let any direct caller spoof
+  // X-Forwarded-For to bypass IP-based rate limiting/blocking outright, and
+  // Docker's internal bridge network is always within this private range.
+  app.set('trust proxy', 'loopback, linklocal, uniquelocal');
 
   app.use(
     helmet({
@@ -56,6 +72,20 @@ export function createApp(): Express {
 
   app.use(cookieParser());
   app.use(express.json({ limit: '2mb' }));
+
+  // Created per createApp() call (not module-level) so each test's app gets
+  // its own isolated limiter state, same reasoning as every per-route
+  // limiter below already being created inside its own route-module scope.
+  const globalRateLimiter = createRateLimiter({ keyPrefix: 'global', points: 300, durationSec: 60, blockDurationSec: 60 });
+
+  // Perimeter checks, ahead of any route: an IP already escalated into the
+  // IncidentBlocklist (Item 3c) is rejected before it reaches routing at all,
+  // then a coarse app-wide floor (Item 1) catches genuinely abusive traffic
+  // that no single per-route limiter was tuned to expect. Per-route limiters
+  // (auth/attendance/heartbeat) still apply on top of this — this is a floor,
+  // not a replacement for their tighter, endpoint-specific budgets.
+  app.use(incidentBlocklistGuard);
+  app.use(globalRateLimiter);
 
   app.use(routes);
 

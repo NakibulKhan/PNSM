@@ -25,7 +25,7 @@ from app.errors import PnsmError, ReasonCode
 from app.logging_setup import configure_logging
 from app.middleware import HmacAuthMiddleware, RequestContextMiddleware
 from app.obs.metrics import METRICS
-from app.routers import admin, biometrics, health, security, storage
+from app.routers import admin, biometrics, health, liveness, security, storage
 from app.runtime import Runtime
 from app.security.headers import SecurityHeadersMiddleware
 
@@ -177,6 +177,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     register_handlers(app)
     app.include_router(health.router)
     app.include_router(biometrics.router)
+    app.include_router(liveness.router)
     app.include_router(security.router)
     app.include_router(storage.router)
     app.include_router(admin.router)

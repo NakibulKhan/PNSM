@@ -336,6 +336,129 @@
         "title": "ImageRefModel",
         "type": "object"
       },
+      "LivenessChallengeRequest": {
+        "additionalProperties": false,
+        "description": "Item 3 (Flawless/Ultra blueprint): active-illumination liveness.\n\nNot ISO/IEC 30107-3 certified -- that needs a real accredited lab. This is\na genuine, own-built PAD signal: the client flashes 2-4 randomized screen\ncolors and captures one frame per flash; this endpoint checks whether the\nframes' color response actually correlates with the reported flash.",
+        "properties": {
+          "frames": {
+            "items": {
+              "$ref": "#/components/schemas/LivenessFrameModel"
+            },
+            "maxItems": 4,
+            "minItems": 2,
+            "title": "Frames",
+            "type": "array"
+          },
+          "request_id": {
+            "maxLength": 26,
+            "minLength": 26,
+            "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "user_ref": {
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "title": "User Ref",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_ref",
+          "request_id",
+          "frames"
+        ],
+        "title": "LivenessChallengeRequest",
+        "type": "object"
+      },
+      "LivenessChallengeResponse": {
+        "properties": {
+          "confidence": {
+            "description": "Mean per-frame color-correlation score. Not a certified detection rate.",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "passed": {
+            "title": "Passed",
+            "type": "boolean"
+          },
+          "per_frame_scores": {
+            "description": "One 0-100 correlation score per submitted frame, in the order sent.",
+            "items": {
+              "type": "number"
+            },
+            "title": "Per Frame Scores",
+            "type": "array"
+          }
+        },
+        "required": [
+          "passed",
+          "confidence",
+          "per_frame_scores"
+        ],
+        "title": "LivenessChallengeResponse",
+        "type": "object"
+      },
+      "LivenessFrameModel": {
+        "additionalProperties": false,
+        "description": "One captured frame, timed to a screen-flash color the client displayed.",
+        "properties": {
+          "color": {
+            "enum": [
+              "red",
+              "green",
+              "blue",
+              "white"
+            ],
+            "title": "Color",
+            "type": "string"
+          },
+          "image": {
+            "$ref": "#/components/schemas/ImageRefModel"
+          }
+        },
+        "required": [
+          "color",
+          "image"
+        ],
+        "title": "LivenessFrameModel",
+        "type": "object"
+      },
+      "PassivePadModel": {
+        "description": "Item 3b (Flawless/Ultra blueprint): moire/edge-sharpness heuristics.\n\nA real but uncertified PAD signal (classical CV, not a trained model, not\nISO/IEC 30107-3 certified) -- see app/ai/passive_pad.py. Recorded\nalongside the match, never used alone to reject a check-in.",
+        "properties": {
+          "confidence": {
+            "description": "Combined heuristic score. Not a certified detection rate.",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "edge_sharpness": {
+            "description": "Laplacian variance; very low suggests a soft print or replay.",
+            "minimum": 0.0,
+            "title": "Edge Sharpness",
+            "type": "number"
+          },
+          "moire_energy_ratio": {
+            "description": "Higher is more suspicious (periodic screen/print pattern).",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Moire Energy Ratio",
+            "type": "number"
+          }
+        },
+        "required": [
+          "moire_energy_ratio",
+          "edge_sharpness",
+          "confidence"
+        ],
+        "title": "PassivePadModel",
+        "type": "object"
+      },
       "PinHashRequest": {
         "additionalProperties": false,
         "properties": {
@@ -827,6 +950,9 @@
             "title": "Model Version",
             "type": "string"
           },
+          "passive_pad": {
+            "$ref": "#/components/schemas/PassivePadModel"
+          },
           "quality": {
             "$ref": "#/components/schemas/QualityModel"
           },
@@ -855,6 +981,7 @@
           "reason_code",
           "hr_alert",
           "quality",
+          "passive_pad",
           "model_version",
           "image_hash",
           "capture_skew_s",
@@ -1344,6 +1471,131 @@
           }
         },
         "summary": "Generate an encrypted reference embedding (FR-01)",
+        "tags": [
+          "biometrics"
+        ]
+      }
+    },
+    "/v1/liveness/challenge": {
+      "post": {
+        "description": "Checks whether 2-4 captured frames' color response correlates with the screen-flash colors the client reports having displayed. Returns a **decision**, not an exception, whenever the frames could be read: `passed` is the authoritative liveness result -- the client never self-reports pass/fail. Not ISO/IEC 30107-3 certified; a real, own-built heuristic signal, documented as such in docs/API.md.",
+        "operationId": "liveness_challenge_v1_liveness_challenge_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LivenessChallengeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LivenessChallengeResponse",
+                  "additionalProperties": true,
+                  "title": "Response Liveness Challenge V1 Liveness Challenge Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "BAD_REQUEST"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "UNAUTHORIZED - bad or missing HMAC signature"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "MOCK_LOCATION or EMULATOR_DETECTED"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "REPLAY_DETECTED, STALE_CAPTURE, MODEL_VERSION_MISMATCH, NO_REFERENCE_EMBEDDING"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "PAYLOAD_TOO_LARGE"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Quality gate failure or malformed body"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "RATE_LIMITED"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "DECRYPT_FAILED or INTERNAL"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "UPSTREAM_STORAGE_ERROR"
+          }
+        },
+        "summary": "Active-illumination liveness challenge (Item 3)",
         "tags": [
           "biometrics"
         ]

@@ -3,6 +3,20 @@ import { getSingletonBilling } from '../models/Billing';
 import { getSingletonPolicy } from '../models/Policy';
 import type { UpdatePolicyInput } from '../validation/policySchemas';
 import { toRoleKey } from '../constants';
+import { open, type FieldEnvelope } from '../crypto/fieldEnvelope';
+import { getGeoKeyProvider } from '../crypto/geoKeyProvider';
+import { logger } from '../utils/logger';
+
+/** Item 9: mirrors attendanceService.ts's openGeoPoint() — never throws, logs and returns null instead. */
+function openGeoPoint(userIdStr: string | null, envelope: unknown): { type: 'Point'; coordinates: [number, number] } | null {
+  if (!userIdStr || !envelope) return null;
+  try {
+    return open(envelope as FieldEnvelope, { userRef: userIdStr, field: 'gps_location', provider: getGeoKeyProvider() });
+  } catch (err) {
+    logger.error('gps_location envelope failed to open', err, { userId: userIdStr });
+    return null;
+  }
+}
 
 export async function listAdmins() {
   const adminRoleNames = ['Super Admin', 'Admin'];
@@ -54,19 +68,20 @@ export async function recordAuditEntry(actorId: string, action: string, target: 
 export async function listSpoofAlerts(page = 1, pageSize = 50) {
   const skip = (page - 1) * pageSize;
   const [rows, total] = await Promise.all([
-    SpoofAlert.find({}).sort({ detected_at: -1 }).skip(skip).limit(pageSize).populate('user_id', 'name').lean(),
+    SpoofAlert.find({}).select('+gps_location').sort({ detected_at: -1 }).skip(skip).limit(pageSize).populate('user_id', 'name').lean(),
     SpoofAlert.countDocuments({}),
   ]);
   return {
     rows: rows.map((r) => {
       const user = r.user_id as unknown as { _id?: unknown; name?: string } | null;
+      const userIdStr = user?._id ? String(user._id) : String(r.user_id);
       return {
         _id: String(r._id),
-        user_id: user?._id ? String(user._id) : String(r.user_id),
+        user_id: userIdStr,
         employee_name: user?.name,
         detected_at: r.detected_at,
         reason: r.reason,
-        gps_location: r.gps_location,
+        gps_location: openGeoPoint(userIdStr, r.gps_location),
       };
     }),
     total,

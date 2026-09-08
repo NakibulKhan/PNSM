@@ -8,7 +8,6 @@ import { RefreshCcw, ShieldOff } from 'lucide-react';
 import { Avatar } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardBody, CardHeader } from '@/components/ui/card';
 import { ConfidenceBar } from '@/components/ui/confidence-bar';
 import { TableShell, Td, Th, Tr } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -16,6 +15,9 @@ import { EmptyState, ErrorState } from '@/components/common/states';
 import { PhotoUpload } from '@/components/forms/photo-upload';
 import { RbacGate } from '@/components/common/rbac-gate';
 import { useToast } from '@/components/ui/toast';
+import { BentoGrid } from '@/components/bento/BentoGrid';
+import { BentoTile } from '@/components/bento/BentoTile';
+import { TileHeader } from '@/components/bento/TileHeader';
 import { api, fetchData } from '@/api/client';
 import { queryKeys } from '@/lib/query-keys';
 import { formatDate, formatTime } from '@/lib/tz';
@@ -67,18 +69,18 @@ export function EmployeeDetailView({ employeeId }: { employeeId: string }) {
 
   if (isPending) {
     return (
-      <div className="grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
-        <Skeleton className="h-[320px]" />
-        <Skeleton className="h-[320px]" />
+      <div className="split-grid grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
+        <Skeleton className="split-aside h-[320px]" />
+        <Skeleton className="split-main h-[320px]" />
       </div>
     );
   }
 
   if (isError || !data) {
     return (
-      <Card>
+      <div className="card">
         <ErrorState message="That employee record could not be loaded. It may have been removed." />
-      </Card>
+      </div>
     );
   }
 
@@ -88,17 +90,13 @@ export function EmployeeDetailView({ employeeId }: { employeeId: string }) {
       : null;
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
-      <div className="space-y-4">
-        <Card>
-          <CardBody className="text-center">
-            <div className="flex justify-center">
-              <Avatar name={data.name} src={data.reference_photo_url} size={84} />
-            </div>
-            <p className="mt-3 text-[15px] font-semibold text-ink">{data.name}</p>
-            <p className="tnum text-[11.5px] text-faint">{data.employee_code}</p>
-
-            <div className="mt-2 flex justify-center gap-1.5">
+    <BentoGrid>
+      <BentoTile rank="hero">
+        <TileHeader title={data.name} support={data.employee_code} />
+        <div className="flex flex-1 flex-col p-4 pt-0">
+          <div className="flex items-start gap-4">
+            <Avatar name={data.name} src={data.reference_photo_url} size={64} />
+            <div className="flex flex-wrap gap-1.5 pt-1">
               {data.is_active === false ? (
                 <Badge tone="rejected">Deactivated</Badge>
               ) : (
@@ -110,95 +108,88 @@ export function EmployeeDetailView({ employeeId }: { employeeId: string }) {
                 <Badge tone="flagged">No baseline</Badge>
               )}
             </div>
+          </div>
 
-            <dl className="mt-4 space-y-2 border-t border-line pt-4 text-left">
-              {[
-                ['Department', data.department ?? '—'],
-                ['Assigned office', data.office_name ?? '—'],
-                ['Email', data.email],
-                ['Mobile', data.phone],
-                [
-                  'Shift',
-                  data.shift ? `${data.shift.start_time} – ${data.shift.end_time} (${data.shift.days_of_week})` : '—',
-                ],
-                ['Onboarded', formatDate(data.created_at)],
-                ['Embedding model', data.face_embedding_meta?.model_version ?? '\u2014'],
-                [
-                  'Biometric storage',
-                  data.has_face_embedding
-                    ? 'Isolated collection, AES-256-GCM encrypted'
-                    : '\u2014',
-                ],
-              ].map(([label, value]) => (
-                <div key={label} className="flex items-start justify-between gap-3">
-                  <dt className="eyebrow shrink-0 pt-0.5">{label}</dt>
-                  <dd className="min-w-0 break-words text-right text-[12px] text-ink">{value}</dd>
-                </div>
-              ))}
-            </dl>
-          </CardBody>
-        </Card>
+          <dl className="mt-4 grid grid-cols-1 gap-x-6 gap-y-2 border-t border-hairline pt-4 sm:grid-cols-2">
+            {[
+              ['Department', data.department ?? '—'],
+              ['Assigned office', data.office_name ?? '—'],
+              ['Email', data.email],
+              ['Mobile', data.phone],
+              [
+                'Shift',
+                data.shift ? `${data.shift.start_time} – ${data.shift.end_time} (${data.shift.days_of_week})` : '—',
+              ],
+              ['Onboarded', formatDate(data.created_at)],
+              ['Embedding model', data.face_embedding_meta?.model_version ?? '—'],
+              [
+                'Biometric storage',
+                data.has_face_embedding ? 'Isolated collection, AES-256-GCM encrypted' : '—',
+              ],
+            ].map(([label, value]) => (
+              <div key={label} className="flex items-start justify-between gap-3">
+                <dt className="eyebrow shrink-0 pt-0.5">{label}</dt>
+                <dd className="min-w-0 break-words text-right text-[12px] text-ink">{value}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      </BentoTile>
 
-        <RbacGate permission="employee:write">
-          <Card>
-            <CardHeader
-              title="Reference photo"
-              description="Replace it if matching accuracy has drifted."
-              action={
-                !replacing ? (
-                  <Button variant="secondary" size="sm" onClick={() => setReplacing(true)}>
-                    <RefreshCcw size={13} aria-hidden /> Replace
-                  </Button>
-                ) : null
-              }
-            />
-            {replacing ? (
-              <CardBody>
-                <PhotoUpload
-                  value={null}
-                  onChange={(url) => {
-                    if (url) updatePhoto.mutate(url);
-                  }}
-                />
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="mt-2"
-                  onClick={() => setReplacing(false)}
-                >
-                  Cancel
+      <RbacGate permission="employee:write">
+        <BentoTile rank="square">
+          <TileHeader
+            title="Reference photo"
+            support="Replace it if matching accuracy has drifted."
+            action={
+              !replacing ? (
+                <Button variant="secondary" size="sm" onClick={() => setReplacing(true)}>
+                  <RefreshCcw size={13} aria-hidden /> Replace
                 </Button>
-              </CardBody>
-            ) : null}
-          </Card>
-        </RbacGate>
-
-        <RbacGate permission="employee:deactivate">
-          {data.is_active !== false ? (
-            <Card>
-              <CardBody>
-                <p className="eyebrow mb-1">Access</p>
-                <p className="mb-2.5 text-[11.5px] text-muted">
-                  Deactivating keeps the attendance history and blocks future check-ins.
-                </p>
-                <Button
-                  variant="danger"
-                  size="sm"
-                  loading={deactivate.isPending}
-                  onClick={() => deactivate.mutate()}
-                >
-                  <ShieldOff size={13} aria-hidden /> Deactivate account
-                </Button>
-              </CardBody>
-            </Card>
+              ) : null
+            }
+          />
+          {replacing ? (
+            <div className="p-4 pt-0">
+              <PhotoUpload
+                value={null}
+                onChange={(url) => {
+                  if (url) updatePhoto.mutate(url);
+                }}
+              />
+              <Button variant="ghost" size="sm" className="mt-2" onClick={() => setReplacing(false)}>
+                Cancel
+              </Button>
+            </div>
           ) : null}
-        </RbacGate>
-      </div>
+        </BentoTile>
+      </RbacGate>
 
-      <Card>
-        <CardHeader
+      <RbacGate permission="employee:deactivate">
+        {data.is_active !== false ? (
+          <BentoTile rank="square">
+            <div className="flex flex-1 flex-col p-4">
+              <p className="eyebrow mb-1">Access</p>
+              <p className="mb-2.5 text-[11.5px] text-muted">
+                Deactivating keeps the attendance history and blocks future check-ins.
+              </p>
+              <Button
+                variant="danger"
+                size="sm"
+                loading={deactivate.isPending}
+                onClick={() => deactivate.mutate()}
+              >
+                <ShieldOff size={13} aria-hidden /> Deactivate account
+              </Button>
+            </div>
+          </BentoTile>
+        ) : null}
+      </RbacGate>
+
+      <BentoTile rank="wide" span="bento-span-tall">
+        <TileHeader
           title="Attendance history"
-          description="Most recent events first"
+          support="Most recent events first"
           action={
             averageMatch !== null ? (
               <div className="flex items-center gap-2">
@@ -209,44 +200,46 @@ export function EmployeeDetailView({ employeeId }: { employeeId: string }) {
           }
         />
 
-        {data.recent_logs.length === 0 ? (
-          <EmptyState
-            title="No check-ins recorded"
-            message="History appears once this employee checks in from the mobile app."
-          />
-        ) : (
-          <TableShell>
-            <thead>
-              <tr>
-                <Th>Date</Th>
-                <Th>Time</Th>
-                <Th>Type</Th>
-                <Th>Office</Th>
-                <Th align="right">Face match</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.recent_logs.map((log) => (
-                <Tr key={log._id}>
-                  <Td className="tnum">{formatDate(log.timestamp)}</Td>
-                  <Td className="tnum">{formatTime(log.timestamp)}</Td>
-                  <Td>
-                    <Badge tone={log.check_type === 'check_in' ? 'accent' : 'neutral'}>
-                      {checkTypeLabel(log.check_type)}
-                    </Badge>
-                  </Td>
-                  <Td className="text-muted">{log.office_name}</Td>
-                  <Td align="right">
-                    <div className="flex justify-end">
-                      <ConfidenceBar score={log.face_match_score} width="w-16" />
-                    </div>
-                  </Td>
-                </Tr>
-              ))}
-            </tbody>
-          </TableShell>
-        )}
-      </Card>
-    </div>
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          {data.recent_logs.length === 0 ? (
+            <EmptyState
+              title="No check-ins recorded"
+              message="History appears once this employee checks in from the mobile app."
+            />
+          ) : (
+            <TableShell>
+              <thead>
+                <tr>
+                  <Th>Date</Th>
+                  <Th>Time</Th>
+                  <Th>Type</Th>
+                  <Th>Office</Th>
+                  <Th align="right">Face match</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.recent_logs.map((log) => (
+                  <Tr key={log._id}>
+                    <Td className="tnum">{formatDate(log.timestamp)}</Td>
+                    <Td className="tnum">{formatTime(log.timestamp)}</Td>
+                    <Td>
+                      <Badge tone={log.check_type === 'check_in' ? 'accent' : 'neutral'}>
+                        {checkTypeLabel(log.check_type)}
+                      </Badge>
+                    </Td>
+                    <Td className="text-muted">{log.office_name}</Td>
+                    <Td align="right">
+                      <div className="flex justify-end">
+                        <ConfidenceBar score={log.face_match_score} width="w-16" />
+                      </div>
+                    </Td>
+                  </Tr>
+                ))}
+              </tbody>
+            </TableShell>
+          )}
+        </div>
+      </BentoTile>
+    </BentoGrid>
   );
 }

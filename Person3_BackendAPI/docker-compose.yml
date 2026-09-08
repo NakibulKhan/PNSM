@@ -1,3 +1,19 @@
+# ============================================================================
+# SUPERSEDED — not the compose file this project actually uses.
+# ============================================================================
+# Leftover from this quadrant's own early, single-quadrant development phase
+# (Phase 1/2), before the root-level docker-compose.yml unified all four
+# quadrants (Phase 5) and, later, added Redis, the TLS/PQC proxy, and real
+# MongoDB Atlas (DECISIONS.md N24, N30, N40). Nothing in this project
+# references or runs this file any more — confirmed via a repo-wide search
+# before writing this note, not assumed. Its `MONGODB_URI` still points at
+# the local `mongo:27017` container shape this backend no longer uses in the
+# real dev workflow (see the root docker-compose.yml + SETUP.md instead).
+# Left in place rather than deleted (it costs nothing sitting unused, and
+# deleting files unasked is a bigger call than documenting one honestly), but
+# do not `docker compose up` from inside this directory expecting it to match
+# the real stack — it won't.
+
 services:
   backend:
     build: .

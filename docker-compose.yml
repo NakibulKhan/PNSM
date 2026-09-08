@@ -4,10 +4,14 @@
 #   docker compose up --build
 #
 # What you get:
-#   :27017 MongoDB
+#   :27017 MongoDB (local container — kept as an offline-dev fallback only;
+#          `backend` now connects to the real MongoDB Atlas cluster in
+#          MONGODB_URI/.env instead, see the backend service below)
 #   :9000  MinIO (S3-compatible object store), console on :9001
 #   :8000  Person 4's AI/biometric service
 #   :5000  Person 3's backend API
+#   :6379  Redis (distributed rate limiting + incident blocklist, DECISIONS.md N24/N28)
+#   :8443  TLS/PQC reverse proxy in front of :5000 (optional, DECISIONS.md N33)
 #
 # Person 1 (mobile) and Person 2 (web dashboard) are NOT containerized here —
 # they run via their own `npm run dev` on the host (5173 and 3000), pointed at
@@ -75,6 +79,19 @@ services:
       echo 'bucket pnsm-selfies ready'
       "
 
+  # Backs the distributed rate limiter and incident blocklist (DECISIONS.md
+  # N24/N28 — Flawless/Ultra blueprint compliance). Not used by ai-service or
+  # the mobile/web dev servers, only by `backend`.
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   ai-service:
     build: ./Person4_AIBiometricService
     ports:
@@ -130,7 +147,11 @@ services:
     environment:
       NODE_ENV: development
       PORT: 5000
-      MONGODB_URI: mongodb://mongo:27017/pnsm
+      # Real MongoDB Atlas cluster (set in .env) — the local `mongo` service
+      # below stays defined (harmless, unused) as a fallback for offline dev;
+      # nothing else in this compose project reads from it once this is set.
+      MONGODB_URI: ${MONGODB_URI:?set in .env — see SETUP.md}
+      REDIS_URL: redis://redis:6379
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?set in .env — see SETUP.md}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?set in .env — see SETUP.md}
       # Person 2's dev server.
@@ -139,16 +160,37 @@ services:
       MOBILE_ALLOWED_ORIGINS: capacitor://localhost,http://localhost,ionic://localhost,http://localhost:5173
       PNSM_AI_URL: http://ai-service:8000
       PNSM_HMAC_SECRET: ${PNSM_HMAC_SECRET:?set in .env — see SETUP.md}
+      # Item 9 (Flawless/Ultra blueprint) — AES-256-GCM gps_location field
+      # encryption, the local MongoDB Queryable Encryption replacement.
+      PNSM_GEO_FLE_KEYS: ${PNSM_GEO_FLE_KEYS:?set in .env — see SETUP.md}
+      PNSM_GEO_FLE_ACTIVE_KEY: ${PNSM_GEO_FLE_ACTIVE_KEY:-k1}
       # Display-only (DECISIONS.md N9's uploadService.ts note) — the bucket
       # denies anonymous reads, so this never serves as a directly-fetchable
       # link, only as the string shown in the admin console before a real
       # presigned GET is issued.
       STORAGE_PUBLIC_BASE_URL: http://minio:9000/pnsm-selfies
     depends_on:
-      mongo:
+      # NOT the local `mongo` service any more — backend now connects to the
+      # real Atlas cluster in MONGODB_URI, over the network, not to a
+      # container in this compose project.
+      redis:
         condition: service_healthy
       ai-service:
         condition: service_healthy
+    restart: unless-stopped
+
+  # Additive, optional local TLS/PQC reverse proxy (Item 8, Flawless/Ultra
+  # blueprint — DECISIONS.md N30). A SEPARATE layer in front of `backend`,
+  # not a migration: the existing :5000 plain-HTTP mapping and every current
+  # dev workflow are untouched. Self-signed cert generated at image build
+  # time (infra/tls-proxy/Dockerfile) — never committed.
+  tls-proxy:
+    build: ./infra/tls-proxy
+    ports:
+      - "8443:8443"
+    depends_on:
+      backend:
+        condition: service_started
     restart: unless-stopped
 
 volumes:

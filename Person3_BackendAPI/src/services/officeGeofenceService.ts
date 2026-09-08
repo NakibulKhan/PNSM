@@ -10,19 +10,28 @@ function toOfficeDTO(office: { _id: unknown; office_name: string; address: strin
 
 function toGeofenceDTO(geofence: {
   _id: unknown;
-  office_id: { _id?: unknown; office_name?: string } | unknown;
+  office_id: { _id?: unknown; office_name?: string; address?: string } | unknown;
   // Mongoose infers a plain array for a `[Number]`-typed schema field, not a
   // fixed 2-tuple — the schema's own validator enforces length 2 at runtime.
   location: { type: 'Point'; coordinates: number[] };
   radius_meters: number;
 }) {
-  const office = geofence.office_id as { _id?: unknown; office_name?: string } | null;
+  const office = geofence.office_id as
+    | { _id?: unknown; office_name?: string; address?: string }
+    | null;
   return {
     _id: String(geofence._id),
     office_id: office?._id ? String(office._id) : String(geofence.office_id),
     location: geofence.location,
     radius_meters: geofence.radius_meters,
     office_name: office?.office_name,
+    // `address` is returned so the edit form can round-trip it. It used to be
+    // omitted here, which meant the console had an address input it could never
+    // hydrate — so every PATCH sent `address: ''` and `updateGeofence` below
+    // dutifully wiped the stored address of any office that was ever edited.
+    // Found by the final master audit; a write path is only safe if the read
+    // path returns everything the write path sends.
+    address: office?.address,
   };
 }
 
@@ -32,7 +41,7 @@ export async function listOffices() {
 }
 
 export async function listGeofences() {
-  const geofences = await Geofence.find({}).populate('office_id', 'office_name').sort({ _id: -1 }).lean();
+  const geofences = await Geofence.find({}).populate('office_id', 'office_name address').sort({ _id: -1 }).lean();
   return geofences.map(toGeofenceDTO);
 }
 
@@ -69,7 +78,7 @@ export async function updateGeofence(id: string, input: UpdateGeofenceInput) {
   }
 
   const updated = await Geofence.findByIdAndUpdate(id, update, { new: true })
-    .populate('office_id', 'office_name')
+    .populate('office_id', 'office_name address')
     .lean();
   return toGeofenceDTO(updated!);
 }

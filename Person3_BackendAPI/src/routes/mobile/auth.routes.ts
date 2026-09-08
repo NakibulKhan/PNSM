@@ -1,5 +1,6 @@
 import { Router } from 'express';
-import rateLimit from 'express-rate-limit';
+import { createRateLimiter } from '../../middleware/rateLimiter';
+import { escalateToIncident } from '../../middleware/incidentBlocklist';
 import { asyncHandler } from '../../utils/asyncHandler';
 import { validate } from '../../middleware/validate';
 import { mobileLoginSchema, mobileRefreshSchema } from '../../validation/mobileSchemas';
@@ -11,8 +12,14 @@ import { MobileApiError } from '../../utils/errors';
 
 const router = Router();
 
-const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 20, standardHeaders: true, legacyHeaders: false });
-const refreshLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 60, standardHeaders: true, legacyHeaders: false });
+const loginLimiter = createRateLimiter({
+  keyPrefix: 'mobile-login',
+  points: 20,
+  durationSec: 15 * 60,
+  blockDurationSec: 30 * 60,
+  onBlocked: escalateToIncident,
+});
+const refreshLimiter = createRateLimiter({ keyPrefix: 'mobile-refresh', points: 60, durationSec: 15 * 60, blockDurationSec: 30 * 60 });
 
 router.post(
   '/login',

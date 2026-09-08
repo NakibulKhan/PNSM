@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import rateLimit from 'express-rate-limit';
+import { createRateLimiter } from '../../middleware/rateLimiter';
 import { asyncHandler } from '../../utils/asyncHandler';
 import { validate } from '../../middleware/validate';
 import { requireAuth } from '../../middleware/auth';
@@ -16,7 +16,7 @@ const router = Router();
  * too tight for a 15s interval with any jitter; this allows roughly double
  * the expected rate before pushing back.
  */
-const heartbeatLimiter = rateLimit({ windowMs: 60 * 1000, limit: 10, standardHeaders: true, legacyHeaders: false });
+const heartbeatLimiter = createRateLimiter({ keyPrefix: 'mobile-heartbeat', points: 10, durationSec: 60, blockDurationSec: 120 });
 
 router.post(
   '/',

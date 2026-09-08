@@ -46,6 +46,16 @@ describe('coordinate order', () => {
   });
 });
 
+describe('pointToLatLng null-safety (Item 9: AES-256-GCM gps_location can fail to decrypt)', () => {
+  it('returns null instead of throwing for a null point', () => {
+    expect(pointToLatLng(null)).toBeNull();
+  });
+
+  it('returns null instead of throwing for an undefined point', () => {
+    expect(pointToLatLng(undefined)).toBeNull();
+  });
+});
+
 describe('flip detection', () => {
   it('accepts a correctly ordered Dhaka point', () => {
     const result = geoJSONPointSchema.safeParse({

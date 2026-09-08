@@ -174,6 +174,20 @@ class PnsmAiClient {
     });
   }
 
+  /**
+   * Active-illumination liveness challenge (Flawless/Ultra blueprint Item 3).
+   * Not ISO/IEC 30107-3 certified -- a real, own-built PAD heuristic. Returns
+   * a decision, not an exception, whenever the frames could be read: branch
+   * on `result.passed`, the authoritative liveness result.
+   *
+   * @param {string} userRef
+   * @param {string} requestId A 26-character ULID.
+   * @param {{color: 'red'|'green'|'blue'|'white', image: object}[]} frames 2-4 frames.
+   */
+  async livenessChallenge({ userRef, requestId, frames }) {
+    return this._post('/v1/liveness/challenge', { user_ref: userRef, request_id: requestId, frames });
+  }
+
   /** Hash a new PIN (FR-06). Store the whole record on the employee document. */
   async hashPin(userRef, pin) {
     return this._post('/v1/security/pin/hash', { user_ref: userRef, pin });

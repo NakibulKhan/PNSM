@@ -20,6 +20,7 @@ import logging
 import time
 from typing import Any
 
+from app.ai import passive_pad
 from app.ai.engine import FaceEngine
 from app.ai.score import ScoreResult, decide
 from app.config import Settings
@@ -114,6 +115,16 @@ class VerifyService:
         result = self._engine.extract(payload, enrolment=False)
         timings.update(result.timings_ms)
 
+        # 9b. Passive PAD (Item 3b, Flawless/Ultra blueprint): moire/edge-
+        #     sharpness heuristics, a real but uncertified signal recorded
+        #     alongside the match -- never used alone to reject a check-in.
+        #     Decodes the payload a second time (engine.decode() is cheap
+        #     relative to the ONNX inference above) rather than threading a
+        #     second return value through extract()'s well-tested internals.
+        started = time.perf_counter()
+        passive = passive_pad.analyze(self._engine.decode(payload), self._settings)
+        timings["passive_pad"] = (time.perf_counter() - started) * 1000.0
+
         # 10. Score against the fitted calibration.
         started = time.perf_counter()
         scored: ScoreResult = decide(
@@ -148,6 +159,7 @@ class VerifyService:
             # cleanly approve. Person 3 broadcasts on this flag.
             "hr_alert": scored.hr_alert,
             "quality": result.quality.as_dict(),
+            "passive_pad": passive.as_dict(),
             "model_version": self._engine.model_version,
             "image_hash": image_hash,
             "capture_skew_s": round(skew_s, 1),

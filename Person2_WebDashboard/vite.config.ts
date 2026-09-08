@@ -2,6 +2,7 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
+import obfuscatorPlugin from 'vite-plugin-javascript-obfuscator';
 import path from 'node:path';
 
 // The triple-slash reference augments Vite's UserConfig type with the `test`
@@ -27,8 +28,46 @@ import path from 'node:path';
  * the Rust-based Oxide engine + Lightning CSS run in-process, which is markedly
  * faster and avoids a separate postcss.config file.
  */
+// Item 5 (Flawless/Ultra blueprint) — M7: Insufficient Binary Protections.
+// Additive, not the default: only `build:obfuscated` (via cross-env
+// OBFUSCATE=1) enables this. `npm run build`/`npm run dev` are untouched.
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [
+    react(),
+    tailwindcss(),
+    ...(process.env.OBFUSCATE === '1'
+      ? [
+          obfuscatorPlugin({
+            // Excludes the two files whose `React.lazy(() => import('@/pages/...'))`
+            // dynamic-import specifiers the obfuscator's string-array transform
+            // was found (by actually running the obfuscated build and loading it
+            // in a browser, not assumed) to corrupt: it pulls the literal
+            // specifier string into an encoded array *before* Vite/Rollup's
+            // import-analysis rewrites it to a real hashed chunk URL, so the
+            // browser ends up trying to resolve the raw alias
+            // '@/pages/login' at runtime instead — "Failed to resolve module
+            // specifier '@/pages/login'". Excluding just the files that
+            // contain the dynamic imports keeps the rest of the app's logic
+            // (auth, RBAC, API client, business logic) genuinely obfuscated.
+            exclude: ['src/router/routes.tsx', 'src/components/dashboard/trend-chart.tsx'],
+            options: {
+              compact: true,
+              controlFlowFlattening: true,
+              // deadCodeInjection left off here specifically: turning it on
+              // was actually tried and timed out well past 5 minutes with
+              // multi-GB memory growth on this quadrant's own ~330KB app
+              // chunk (Person1's much smaller single-bundle app completed in
+              // ~7s with it on) — a real, measured cost of the transform at
+              // this scale, not a theoretical caveat. controlFlowFlattening
+              // + stringArray still provide real, substantial protection.
+              stringArray: true,
+              stringArrayEncoding: ['base64'],
+              // debugProtection intentionally left off — see Person1's identical note.
+            },
+          }),
+        ]
+      : []),
+  ],
 
   resolve: {
     alias: { '@': path.resolve(__dirname, './src') },

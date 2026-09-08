@@ -3,13 +3,14 @@
   "version": "2.0.0",
   "private": true,
   "type": "module",
-  "description": "PNSM Web Command Center \u2014 HR & Super Admin console. Quadrant II. NSU CSE482L, Group 8.",
+  "description": "PNSM Web Command Center — HR & Super Admin console. Quadrant II. NSU CSE482L, Group 8.",
   "engines": {
     "node": ">=20.11.0"
   },
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
+    "build:obfuscated": "tsc --noEmit && cross-env OBFUSCATE=1 vite build --outDir dist-obfuscated",
     "preview": "vite preview",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
@@ -17,9 +18,11 @@
     "test:watch": "vitest",
     "e2e": "playwright test",
     "verify": "npm run typecheck && npm run lint && npm run test && npm run build",
-    "audit:ci": "npm audit --audit-level=high"
+    "audit:ci": "npm audit --audit-level=high",
+    "sbom": "npm sbom --sbom-format cyclonedx --sbom-type application > sbom.json"
   },
   "dependencies": {
+    "@hookform/resolvers": "^3.9.1",
     "@tanstack/react-query": "^5.62.7",
     "@tanstack/react-query-persist-client": "^5.62.7",
     "@tanstack/react-table": "^8.20.5",
@@ -29,8 +32,8 @@
     "date-fns": "^4.1.0",
     "date-fns-tz": "^3.2.0",
     "idb-keyval": "^6.2.1",
-    "jspdf": "^2.5.2",
-    "jspdf-autotable": "^3.8.4",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.8",
     "lucide-react": "^0.468.0",
     "maplibre-gl": "^4.7.1",
     "papaparse": "^5.4.1",
@@ -41,8 +44,7 @@
     "recharts": "^2.15.0",
     "socket.io-client": "^4.8.1",
     "tailwind-merge": "^2.5.5",
-    "zod": "^3.23.8",
-    "@hookform/resolvers": "^3.9.1"
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
@@ -55,6 +57,7 @@
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",
+    "cross-env": "^7.0.3",
     "eslint": "^9.17.0",
     "eslint-plugin-react-hooks": "^5.1.0",
     "eslint-plugin-react-refresh": "^0.4.16",
@@ -64,6 +67,7 @@
     "typescript": "^5.7.2",
     "typescript-eslint": "^8.18.1",
     "vite": "^6.0.7",
+    "vite-plugin-javascript-obfuscator": "^3.1.0",
     "vitest": "^2.1.8"
   },
   "overrides": {

@@ -39,7 +39,9 @@ export const CHECKIN_STEPS = [
  * @param {string} opts.employeeId
  * @param {string} opts.pin             - as entered; never validated locally
  * @param {(step:string)=>void} [opts.onStep]
- * @param {()=>Promise<boolean>} opts.runLiveness - resolves true if confirmed
+ * @param {()=>Promise<Array<{color:string,image:{kind:'base64',value:string}}>>} opts.runLiveness
+ *   - captures the active-illumination challenge frames (Item 3); the AI
+ *     service is the authority on pass/fail, never this client
  * @param {object} [opts.deps]          - injectable seams for testing
  * @returns {Promise<{outcome:object, response:object|null, meta:object}>}
  */
@@ -187,8 +189,16 @@ export async function runCheckin({
 
   /* ------------------------------------------------------------ liveness */
   onStep("liveness");
-  const livenessPassed = runLiveness ? await runLiveness() : true;
-  meta.livenessPassed = livenessPassed;
+  // Deliberately forwarded to the real backend as captured, including an
+  // empty/short array — the server is the sole authority on pass/fail (see
+  // Person3_BackendAPI/src/services/attendanceService.ts's own early
+  // liveness_frames.length check, mirroring this exact architectural rule:
+  // the client never invents a local pass/fail boolean, camera-denied
+  // included). See __tests__/checkinFlow.test.js's own "rather than
+  // deciding pass/fail locally" test for why this must stay a straight
+  // forward, not a local short-circuit.
+  const livenessFrames = runLiveness ? await runLiveness() : [];
+  meta.livenessFrames = livenessFrames;
 
   /* ---------------------------------------------------------- compression */
   onStep("compressing");
@@ -241,7 +251,7 @@ export async function runCheckin({
     captured_at: capturedAt,
     gps: { lat: position.lat, lng: position.lng },
     geofence_id: office.geofenceId,
-    liveness_passed: livenessPassed,
+    liveness_frames: livenessFrames,
     pin, // sent as entered — verification is the server's job
     object_key: objectKey,
     device: {

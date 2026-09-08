@@ -1,5 +1,6 @@
 import { Router } from 'express';
-import rateLimit from 'express-rate-limit';
+import { createRateLimiter } from '../../middleware/rateLimiter';
+import { escalateToIncident } from '../../middleware/incidentBlocklist';
 import { asyncHandler } from '../../utils/asyncHandler';
 import { validate } from '../../middleware/validate';
 import { requireAuth } from '../../middleware/auth';
@@ -12,23 +13,30 @@ import { AdminApiError } from '../../utils/errors';
 
 const router = Router();
 
-/** Brute-force mitigation on the one route that accepts a password. */
-const loginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  limit: 20,
-  standardHeaders: true,
-  legacyHeaders: false,
+/**
+ * Brute-force mitigation on the one route that accepts a password.
+ * `onBlocked` feeds Item 3c's local incident-response escalation: an IP that
+ * trips this block twice gets written to the durable IncidentBlocklist and
+ * rejected at the perimeter on every subsequent request, before it can even
+ * reach this route again — the local, no-AWS analog of GuardDuty auto-block.
+ */
+const loginLimiter = createRateLimiter({
+  keyPrefix: 'admin-login',
+  points: 20,
+  durationSec: 15 * 60,
+  blockDurationSec: 30 * 60,
+  onBlocked: escalateToIncident,
 });
 
 /**
  * Refresh is rate-limited too, more loosely: a stolen refresh token should
  * not be usable for unlimited silent token minting.
  */
-const refreshLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  limit: 60,
-  standardHeaders: true,
-  legacyHeaders: false,
+const refreshLimiter = createRateLimiter({
+  keyPrefix: 'admin-refresh',
+  points: 60,
+  durationSec: 15 * 60,
+  blockDurationSec: 30 * 60,
 });
 
 router.post(

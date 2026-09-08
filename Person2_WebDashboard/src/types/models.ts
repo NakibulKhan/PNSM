@@ -108,6 +108,8 @@ export interface Geofence {
   radius_meters: number;
   /** Denormalised by the API for table rendering. */
   office_name?: string;
+  /** Denormalised from the Office so the edit form can round-trip it. */
+  address?: string;
 }
 
 export type CheckType = 'check_in' | 'check_out';
@@ -119,8 +121,13 @@ export interface AttendanceLog {
   geofence_id: ObjectId;
   check_type: CheckType;
   timestamp: ISODateString;
-  /** Device coordinates at check-in. coordinates = [longitude, latitude]. */
-  gps_location: GeoJSONPoint;
+  /**
+   * Device coordinates at check-in. coordinates = [longitude, latitude].
+   * `null` on the one documented failure path of Person 3's AES-256-GCM
+   * field decryption (a stale/rotated key, a corrupted envelope) — never
+   * assume non-null; always go through `pointToLatLng()`.
+   */
+  gps_location: GeoJSONPoint | null;
   /** Cosine-similarity score, 0-100. Auto-approves at >= 85 (FR-07). */
   face_match_score: number;
   selfie_url: string | null;
@@ -180,7 +187,8 @@ export interface SpoofAlert {
   employee_name?: string;
   detected_at: ISODateString;
   reason: string;
-  gps_location: GeoJSONPoint;
+  /** `null` on a decrypt failure — see AttendanceLog.gps_location's doc comment. */
+  gps_location: GeoJSONPoint | null;
 }
 
 /** Authenticated principal as the admin UI understands it. */

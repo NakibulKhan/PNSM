@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import base64
 import datetime as _dt
+import json
+from pathlib import Path
 
 import jsonschema
 import pytest
@@ -22,6 +24,14 @@ REQUIRED_PATHS = {
     "/metrics",
     "/v1/embed",
     "/v1/verify",
+    # Person 1's entire liveness design routes through this endpoint (its
+    # CheckInScreen documents the AI service as "the sole authority on
+    # pass/fail"), yet it was missing from the committed spec for days: the
+    # spec was exported ~14 hours before the router was written and never
+    # regenerated. This assertion is a superset check, so omitting a path here
+    # meant the test passed while the published contract silently rotted.
+    # Found by the final master audit.
+    "/v1/liveness/challenge",
     "/v1/security/pin/hash",
     "/v1/security/pin/verify",
     "/v1/storage/presign-put",
@@ -93,6 +103,27 @@ def spec(app):
 
 def test_every_documented_path_exists(spec) -> None:
     assert set(spec["paths"]) >= REQUIRED_PATHS, REQUIRED_PATHS - set(spec["paths"])
+
+
+def test_the_committed_spec_covers_every_route_the_app_actually_serves(spec) -> None:
+    """The committed docs/openapi.json must not fall behind the running app.
+
+    Every other test in this file reads ``app.openapi()`` — the spec generated
+    live from the code — so all of them stayed green while the *committed*
+    artifact rotted. It did rot: ``/v1/liveness/challenge`` was missing from
+    docs/openapi.json for days because the file was exported before the router
+    existed, and the only thing that would have caught it was the separate
+    ``make openapi-check`` step, which is easy to skip locally.
+
+    Person 1 codes against the committed file. This assertion makes ``pytest``
+    alone sufficient to catch the drift.
+    """
+    committed_path = Path(__file__).resolve().parents[2] / "docs" / "openapi.json"
+    assert committed_path.exists(), f"{committed_path} is missing — run `make openapi`"
+
+    committed = json.loads(committed_path.read_text(encoding="utf-8"))
+    missing = set(spec["paths"]) - set(committed["paths"])
+    assert not missing, f"docs/openapi.json is stale; run `make openapi`. Missing: {sorted(missing)}"
 
 
 def test_the_document_is_valid_openapi(spec) -> None:

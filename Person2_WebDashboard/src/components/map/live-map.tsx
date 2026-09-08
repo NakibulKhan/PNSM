@@ -42,11 +42,9 @@ export function LiveMap({ presence, geofences, heightClass = 'h-[540px]' }: Live
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
 
-    const first = presence[0]
-      ? pointToLatLng(presence[0].gps_location)
-      : geofences[0]
-        ? pointToLatLng(geofences[0].location)
-        : { lat: DEFAULT_MAP_CENTER[0], lng: DEFAULT_MAP_CENTER[1] };
+    const first =
+      (presence[0] ? pointToLatLng(presence[0].gps_location) : null) ??
+      (geofences[0] ? pointToLatLng(geofences[0].location) : null) ?? { lat: DEFAULT_MAP_CENTER[0], lng: DEFAULT_MAP_CENTER[1] };
 
     const map = new gl.Map({
       container: containerRef.current,
@@ -123,9 +121,21 @@ export function LiveMap({ presence, geofences, heightClass = 'h-[540px]' }: Live
     const seen = new Set<string>();
 
     presence.forEach((entry) => {
-      const { lat, lng } = pointToLatLng(entry.gps_location);
-      const verified = entry.face_match_score >= FACE_MATCH_THRESHOLD;
+      // Marked seen regardless of whether the point below decrypts — this
+      // employee IS present; the cleanup pass further down must not treat a
+      // decrypt failure as "checked out" and remove their existing pin.
       seen.add(entry.user_id);
+
+      const point = pointToLatLng(entry.gps_location);
+      // A decrypt failure (Person3_BackendAPI's openGeoPoint()) means this
+      // employee's location genuinely isn't known right now — skip placing
+      // or moving a pin rather than plotting at a fabricated position. Any
+      // existing marker (from a prior, successful decrypt) is left exactly
+      // where it was, not removed, since a single failed read shouldn't
+      // make a present employee visually disappear from the map.
+      if (!point) return;
+      const { lat, lng } = point;
+      const verified = entry.face_match_score >= FACE_MATCH_THRESHOLD;
 
       const existing = markersRef.current.get(entry.user_id);
       if (existing) {

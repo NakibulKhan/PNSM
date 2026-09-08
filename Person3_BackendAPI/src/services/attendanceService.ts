@@ -11,11 +11,23 @@ import type { MobileAnomalyInput, MobileCheckinInput } from '../validation/mobil
 import type { ListAttendanceQuery, AttendanceFeedQuery } from '../validation/attendanceSchemas';
 import { isInsideGeofence, InvalidCoordinatesError } from './geofenceService';
 import { getAiClient, newUlid, PnsmAiError } from './aiClient';
+import { seal, open, type FieldEnvelope } from '../crypto/fieldEnvelope';
+import { getGeoKeyProvider } from '../crypto/geoKeyProvider';
 import { emitAttendanceFlagged, emitAttendanceNew, emitNotificationNew, emitSpoofAlert } from './socket/emitters';
 import { MobileApiError, AdminApiError } from '../utils/errors';
 import { logger } from '../utils/logger';
 import { todayDhakaRangeUtc } from '../utils/tz';
 import type { AttendanceStatus } from '../constants';
+
+const GEO_FIELD = 'gps_location';
+
+/** Item 9: seal a {lat,lng} into an AES-256-GCM envelope, AAD-bound to the owning user. */
+function sealGeoPoint(userId: string, point: { lat: number; lng: number }): FieldEnvelope {
+  return seal(
+    { type: 'Point', coordinates: [point.lng, point.lat] },
+    { userRef: userId, field: GEO_FIELD, provider: getGeoKeyProvider() },
+  );
+}
 
 export interface CheckinSuccess {
   kind: 'success';
@@ -50,10 +62,46 @@ function lowerReason(code: string): string {
  * actually written.
  */
 export async function performCheckin(userId: string, input: MobileCheckinInput): Promise<CheckinSuccess> {
-  // Cheapest local check first: a client that already knows liveness failed
-  // should never reach the PIN check or the AI service at all.
-  if (input.liveness_passed === false) {
+  const ai = getAiClient();
+
+  // --- Step 1: liveness challenge (Person 4) -------------------------------
+  // Real, server-verified active-illumination PAD signal (Item 3,
+  // Flawless/Ultra blueprint) — never trusted from a client-supplied
+  // pass/fail boolean. Runs first, before touching the DB or spending a PIN
+  // attempt, on the same "cheapest decisive check first" principle the old
+  // client-trusted version already established.
+  //
+  // Checked HERE, not in mobileCheckinSchema (deliberately not `.min(2)` —
+  // see that schema's own comment): a real, legitimate submission can carry
+  // fewer than 2 frames (camera permission denied, getUserMedia
+  // unavailable) and the mobile client forwards that honestly rather than
+  // deciding pass/fail itself (__tests__/checkinFlow.test.js: "forwards
+  // captured challenge frames to the backend rather than deciding pass/fail
+  // locally"). Failing here with the specific business reason — instead of
+  // forwarding an under-count array to Person 4's own `min_length=2`
+  // Pydantic validation and letting that surface as a generic
+  // PnsmAiError -> 'server_error' below — is what makes "liveness_failed"
+  // actually reach the client for this real-world case, and skips a wasted
+  // network round trip for a challenge that cannot possibly pass.
+  if (input.liveness_frames.length < 2) {
     throw new MobileApiError(422, 'liveness_failed');
+  }
+  try {
+    const livenessResult = await ai.livenessChallenge({
+      userRef: userId,
+      requestId: newUlid(),
+      frames: input.liveness_frames,
+    });
+    if (!livenessResult.passed) {
+      throw new MobileApiError(422, 'liveness_failed');
+    }
+  } catch (err) {
+    if (err instanceof MobileApiError) throw err;
+    if (err instanceof PnsmAiError) {
+      logger.error('AI service liveness challenge failed', err, { userId });
+      throw new MobileApiError(err.retryable ? 502 : err.status || 500, 'server_error');
+    }
+    throw err;
   }
 
   // --- Step 2: PIN verify (Person 4) ---------------------------------------
@@ -67,7 +115,6 @@ export async function performCheckin(userId: string, input: MobileCheckinInput):
     throw new MobileApiError(409, 'pin_not_set');
   }
 
-  const ai = getAiClient();
   try {
     const pinResult = await ai.verifyPin(userId, input.pin, user.pin_hash);
     if (!pinResult.match) {
@@ -144,10 +191,15 @@ export async function performCheckin(userId: string, input: MobileCheckinInput):
     check_type: input.check_type,
     timestamp: new Date(input.timestamp),
     server_timestamp: now,
-    gps_location: { type: 'Point', coordinates: [input.gps.lng, input.gps.lat] },
+    gps_location: sealGeoPoint(userId, input.gps),
     mock_location_detected: input.device.is_mock_location,
-    liveness_passed: input.liveness_passed,
+    // Real, server-verified result from Step 1's liveness challenge — always
+    // true here (a false result already threw above), stored explicitly
+    // rather than assumed so the field's meaning stays honest if this
+    // function's control flow ever changes.
+    liveness_passed: true,
     face_match_score: result.confidence,
+    passive_pad_confidence: result.passive_pad.confidence,
     // Bucket blocks public access — this is an object key, not a browsable
     // URL. Admin viewing goes through a presign-get proxy (DECISIONS.md N2).
     selfie_url: input.object_key,
@@ -155,9 +207,19 @@ export async function performCheckin(userId: string, input: MobileCheckinInput):
   });
 
   // --- Step 6: broadcast (Person 3) ----------------------------------------
-  const populated = await AttendanceLog.findById(log._id)
-    .populate<{ user_id: { name: string; employee_code?: string } }>('user_id', 'name employee_code')
-    .lean();
+  // Populates the just-created document in place rather than a second
+  // `findById` round trip — `log` already has every field (including
+  // gps_location; `select: false` only applies to subsequent queries, not a
+  // document already held in memory). `.toObject()`, not a raw `{...log}`
+  // spread — spreading a live Mongoose Document loses/mishandles its
+  // internal state in a way `.toObject()` (Mongoose's own documented
+  // POJO-conversion method) does not.
+  await log.populate<{ user_id: { name: string; employee_code?: string } }>('user_id', 'name employee_code');
+  // toObject()'s inferred type still reflects the pre-populate schema
+  // (user_id: ObjectId) — populate() mutates the document in place but
+  // doesn't change its static type. Asserted here rather than threading a
+  // generic through toObject() itself, which Mongoose's own types don't support.
+  const populated = log.toObject() as unknown as Record<string, unknown> & { user_id: { name: string; employee_code?: string } };
   const payload = toAttendanceLogSocketPayload(populated);
   emitAttendanceNew(payload);
   if (status === 'flagged') {
@@ -199,7 +261,7 @@ async function handleVerifyError(err: unknown, userId: string, input: MobileChec
       const alert = await SpoofAlert.create({
         user_id: new Types.ObjectId(userId),
         reason: err.code,
-        gps_location: { type: 'Point', coordinates: [input.gps.lng, input.gps.lat] },
+        gps_location: sealGeoPoint(userId, input.gps),
       });
       const populated = await SpoofAlert.findById(alert._id).populate<{ user_id: { name: string } }>('user_id', 'name').lean();
       emitSpoofAlert({
@@ -241,7 +303,7 @@ export async function reportMobileAnomaly(userId: string, input: MobileAnomalyIn
     user_id: new Types.ObjectId(userId),
     detected_at: new Date(input.timestamp),
     reason: 'mock_location_detected',
-    gps_location: { type: 'Point', coordinates: [input.lng, input.lat] },
+    gps_location: sealGeoPoint(userId, { lat: input.lat, lng: input.lng }),
   });
   const populated = await SpoofAlert.findById(alert._id).populate<{ user_id: { name: string } }>('user_id', 'name').lean();
   emitSpoofAlert({
@@ -269,12 +331,20 @@ async function officeGeofenceIds(officeId: string): Promise<Types.ObjectId[]> {
 function toAttendanceLogSocketPayload(doc: Record<string, unknown> | null): Record<string, unknown> {
   if (!doc) return {};
   const user = doc.user_id as { name?: string; employee_code?: string; _id?: unknown } | undefined;
+  const userIdStr = user && typeof user === 'object' && 'name' in user ? String((user as { _id: unknown })._id) : String(doc.user_id);
   return {
     ...doc,
     _id: String(doc._id),
-    user_id: user && typeof user === 'object' && 'name' in user ? String((user as { _id: unknown })._id) : String(doc.user_id),
+    user_id: userIdStr,
     employee_name: user?.name,
     employee_code: user?.employee_code,
+    // Item 9: gps_location is stored as an opaque AES-256-GCM envelope, not a
+    // plain GeoJSON point — every OTHER read path (toAttendanceRowDTO below)
+    // already decrypts it before handing it to a caller. This socket
+    // broadcast is Person 2's live-map/flagged-queue data source and must
+    // match that contract exactly, or the envelope's {v,kv,alg,iv,ct,tag}
+    // shape reaches pointToLatLng() as real-time push data and throws.
+    gps_location: openGeoPoint(userIdStr, doc.gps_location),
   };
 }
 
@@ -294,6 +364,7 @@ export async function listAttendance(query: ListAttendanceQuery) {
   const skip = (query.page - 1) * query.pageSize;
   const [rows, total] = await Promise.all([
     AttendanceLog.find(filter)
+      .select('+gps_location')
       .sort({ timestamp: -1 })
       .skip(skip)
       .limit(query.pageSize)
@@ -318,6 +389,7 @@ export async function listAttendance(query: ListAttendanceQuery) {
 
 export async function getFeed(query: AttendanceFeedQuery) {
   const rows = await AttendanceLog.find({})
+    .select('+gps_location')
     .sort({ timestamp: -1 })
     .limit(query.limit)
     .populate('user_id', 'name employee_code')
@@ -347,17 +419,29 @@ export async function getLiveMap() {
   return (populated as unknown as Record<string, unknown>[]).map(toAttendanceRowDTO);
 }
 
+/** Item 9: open a stored gps_location envelope for display. Never throws — a decrypt failure surfaces as null, logged, not a broken admin list. */
+function openGeoPoint(userIdStr: string | null, envelope: unknown): { type: 'Point'; coordinates: [number, number] } | null {
+  if (!userIdStr || !envelope) return null;
+  try {
+    return open(envelope as FieldEnvelope, { userRef: userIdStr, field: GEO_FIELD, provider: getGeoKeyProvider() });
+  } catch (err) {
+    logger.error('gps_location envelope failed to open', err, { userId: userIdStr });
+    return null;
+  }
+}
+
 function toAttendanceRowDTO(row: Record<string, unknown>) {
   const user = row.user_id as { _id?: unknown; name?: string; employee_code?: string } | null;
   const geofence = row.geofence_id as { _id?: unknown; office_id?: { office_name?: string } } | null;
+  const userIdStr = user?._id ? String(user._id) : null;
   return {
     _id: String(row._id),
-    user_id: user?._id ? String(user._id) : null,
+    user_id: userIdStr,
     geofence_id: geofence?._id ? String(geofence._id) : null,
     check_type: row.check_type,
     timestamp: (row.timestamp as Date)?.toISOString?.() ?? row.timestamp,
     server_timestamp: (row.server_timestamp as Date)?.toISOString?.() ?? row.server_timestamp,
-    gps_location: row.gps_location,
+    gps_location: openGeoPoint(userIdStr, row.gps_location),
     mock_location_detected: row.mock_location_detected,
     liveness_passed: row.liveness_passed,
     face_match_score: row.face_match_score,
@@ -371,6 +455,7 @@ function toAttendanceRowDTO(row: Record<string, unknown>) {
 
 async function setAttendanceStatus(id: string, status: 'approved' | 'rejected') {
   const log = await AttendanceLog.findByIdAndUpdate(id, { status }, { new: true })
+    .select('+gps_location')
     .populate('user_id', 'name employee_code')
     .populate({ path: 'geofence_id', populate: { path: 'office_id', select: 'office_name' } })
     .lean();

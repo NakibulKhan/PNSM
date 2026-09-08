@@ -88,6 +88,13 @@ export interface VerifyParams {
 
 export type DecisionBands = 'two' | 'three';
 
+/** Item 3b — real but uncertified passive PAD heuristic (app/ai/passive_pad.py). */
+export interface PassivePadResult {
+  moire_energy_ratio: number;
+  edge_sharpness: number;
+  confidence: number;
+}
+
 export interface VerifyResult {
   decision: 'approved' | 'flagged' | 'rejected';
   confidence: number;
@@ -103,10 +110,30 @@ export interface VerifyResult {
   reason_code: string;
   hr_alert: boolean;
   quality: EmbedResult['quality'];
+  passive_pad: PassivePadResult;
   model_version: string;
   image_hash: string;
   capture_skew_s: number;
   latency_ms: Record<string, number>;
+}
+
+export type LivenessColor = 'red' | 'green' | 'blue' | 'white';
+
+export interface LivenessFrame {
+  color: LivenessColor;
+  image: ImageRef;
+}
+
+export interface LivenessChallengeParams {
+  userRef: string;
+  requestId: string;
+  frames: LivenessFrame[];
+}
+
+export interface LivenessChallengeResult {
+  passed: boolean;
+  confidence: number;
+  per_frame_scores: number[];
 }
 
 export interface PinHashResult {
@@ -280,6 +307,21 @@ export class PnsmAiClient {
         is_emulator: Boolean(device?.isEmulator),
         is_rooted: Boolean(device?.isRooted),
       },
+    });
+  }
+
+  /**
+   * Active-illumination liveness challenge (Flawless/Ultra blueprint Item 3).
+   * Not ISO/IEC 30107-3 certified -- a real, own-built PAD heuristic. Returns
+   * a decision, not an exception, whenever the frames could be read: branch
+   * on `result.passed`, the authoritative liveness result.
+   */
+  async livenessChallenge(params: LivenessChallengeParams): Promise<LivenessChallengeResult> {
+    const { userRef, requestId, frames } = params;
+    return this.post<LivenessChallengeResult>('/v1/liveness/challenge', {
+      user_ref: userRef,
+      request_id: requestId,
+      frames,
     });
   }
 

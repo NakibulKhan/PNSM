@@ -3,11 +3,13 @@
 /* ==========================================================================
    PNSM Command Center — design tokens (Tailwind v4, CSS-first)
 
-   Tailwind v4 abandons tailwind.config.js entirely. Tokens are declared here
-   inside @theme and compiled by the Rust-based Oxide engine through Lightning
-   CSS, which tree-shakes unused utilities out of the production payload.
-   A utility such as `bg-ink` exists ONLY because `--color-ink` is declared
-   below — adding a colour means adding it here, nowhere else.
+   Tailwind v4 abandons tailwind.config.js entirely. Tokens are declared in
+   ./styles/theme.css inside @theme and compiled by the Rust-based Oxide
+   engine through Lightning CSS, which tree-shakes unused utilities out of the
+   production payload. A utility such as `bg-ink` exists ONLY because
+   `--color-ink` is declared there — adding a colour means adding it there,
+   nowhere else. See that file for the dark/light token tables and the Bento
+   redesign's naming rationale (PNSM_Bento_Frontend_Master_Prompt.md §4.2).
 
    Direction: an instrument panel, not a marketing dashboard. The product's own
    vocabulary is measurement — coordinates, radii in metres, match percentages,
@@ -15,38 +17,8 @@
    states a fact rather than decorating a container.
    ========================================================================== */
 
-@theme {
-  --color-ink: #0f1b2d;
-  --color-ink-soft: #1b2a42;
-  --color-ink-line: #24354f;
-  --color-canvas: #f5f7fa;
-  --color-surface: #ffffff;
-  --color-line: #dde3ec;
-  --color-line-strong: #c3cddc;
-  --color-muted: #5b6a80;
-  --color-faint: #8a97a8;
-
-  --color-accent: #1e5fa8;
-  --color-accent-soft: #e8f0fa;
-  --color-accent-dark: #164a85;
-
-  --color-verified: #0e7c5a;
-  --color-verified-soft: #e4f4ee;
-  --color-flagged: #b4690e;
-  --color-flagged-soft: #fdf1de;
-  --color-rejected: #b3261e;
-  --color-rejected-soft: #fbe9e7;
-
-  --font-sans: ui-sans-serif, "Segoe UI Variable Text", "Segoe UI", system-ui,
-    -apple-system, "Helvetica Neue", Arial, sans-serif;
-  --font-mono: ui-monospace, "Cascadia Mono", "JetBrains Mono", "SF Mono",
-    Menlo, Consolas, monospace;
-
-  --radius-xs: 3px;
-  --radius-sm: 5px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-}
+@import "./styles/theme.css";
+@import "./styles/bento.css";
 
 /* ==========================================================================
    SAFARI 16.3 COMPATIBILITY LAYER  —  do not remove
@@ -101,8 +73,16 @@
   }
 
   /* Opacity modifiers such as bg-accent/25 compile to color-mix(); supply
-     literal fallbacks for the few places where the tint carries meaning. */
+     literal fallbacks for the few places where the tint carries meaning.
+     Dark is the operator default (theme.css); light is a plain override of
+     the same two properties, matching how the real token layer overrides
+     work — this fallback path must degrade correctly under both themes. */
   .card {
+    background-color: #1c2a3d;
+    border: 1px solid #33455e;
+  }
+
+  [data-theme="light"] .card {
     background-color: #ffffff;
     border: 1px solid #dde3ec;
   }

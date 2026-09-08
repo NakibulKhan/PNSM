@@ -2,6 +2,9 @@ import React from "react";
 import { useNavigate } from "react-router-dom";
 import { useApp } from "../state/AppContext";
 import BatteryOptimizationNotice from "../components/BatteryOptimizationNotice";
+import BentoGrid from "../components/bento/BentoGrid";
+import BentoTile from "../components/bento/BentoTile";
+import TileHeader from "../components/bento/TileHeader";
 
 function formatLogTime(iso) {
   return new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
@@ -43,66 +46,74 @@ export default function HomeScreen() {
         </div>
       </div>
 
-      <section className="mt-6 rounded-xl border border-ai-accent bg-surface-container-lowest p-5">
-        <p
-          className={`font-mono text-[11px] uppercase tracking-wide ${
-            checkedInAt ? "text-success-emerald" : "text-error"
-          }`}
-        >
-          {checkedInAt ? "Active session" : "Not checked in"}
-        </p>
-        <p className="mt-1 font-display text-lg text-text-navy">
-          {checkedInAt
-            ? `Checked in at ${checkedInAt.toLocaleTimeString("en-US", {
-                hour: "numeric",
-                minute: "2-digit",
-              })}`
-            : "Shift starts 9:00 AM"}
-        </p>
-        <p className="mt-1 text-xs text-on-surface-variant">{office.name}</p>
+      <BentoGrid className="mt-6">
+        <BentoTile rank="hero" className="border-ai-accent">
+          <TileHeader
+            title={checkedInAt ? "Active session" : "Not checked in"}
+          />
+          <div className="flex flex-1 flex-col px-4 pb-4">
+            <p className="font-display text-lg text-ink">
+              {checkedInAt
+                ? `Checked in at ${checkedInAt.toLocaleTimeString("en-US", {
+                    hour: "numeric",
+                    minute: "2-digit",
+                  })}`
+                : "Shift starts 9:00 AM"}
+            </p>
+            <p className="mt-1 text-xs text-ink-muted">{office.name}</p>
 
-        <button
-          onClick={() => (checkedInAt ? dispatch({ type: "CHECK_OUT" }) : navigate("/check-in"))}
-          className="mt-4 w-full rounded-lg bg-text-navy py-3 font-semibold text-white"
-        >
-          {checkedInAt ? "Check out" : "Check in"}
-        </button>
-      </section>
+            {/* bg-primary-container, not bg-text-navy: text-navy is now a TEXT-role
+                alias (near-white in the dark-default theme, N42's lesson) — the
+                same primary-action button colour already used by every other CTA
+                in this app (LoginScreen, CheckInScreen) keeps real contrast. */}
+            <button
+              onClick={() => (checkedInAt ? dispatch({ type: "CHECK_OUT" }) : navigate("/check-in"))}
+              data-interactive
+              className="mt-4 w-full rounded-lg bg-primary-container py-3 font-semibold text-white"
+            >
+              {checkedInAt ? "Check out" : "Check in"}
+            </button>
+          </div>
+        </BentoTile>
+
+        <BentoTile rank="wide">
+          <TileHeader title="Recent check-ins" />
+          <div className="mt-2">
+            {history.length === 0 && (
+              <p className="p-4 text-center text-xs text-ink-muted">No check-ins yet.</p>
+            )}
+            {history.slice(0, 5).map((h) => (
+              <div
+                key={h._id}
+                className="flex items-center justify-between border-t border-hairline px-4 py-3"
+              >
+                <div>
+                  <p className="flex flex-wrap items-baseline gap-x-1.5 font-semibold text-ink">
+                    <span>{h.checkType === "check_out" ? "Check-out" : "Check-in"}</span>
+                    <span className="font-mono text-xs font-normal text-ink-muted">
+                      {formatLogTime(h.timestamp)}
+                    </span>
+                  </p>
+                  <p className="text-xs text-ink-muted">{formatLogDate(h.timestamp)}</p>
+                </div>
+                <span
+                  className={`font-mono text-[11px] uppercase ${
+                    h.status === "approved"
+                      ? "text-success-emerald"
+                      : h.status === "flagged"
+                        ? "text-warning-amber"
+                        : "text-ink-muted"
+                  }`}
+                >
+                  {h.score != null ? `${h.score}%` : h.status}
+                </span>
+              </div>
+            ))}
+          </div>
+        </BentoTile>
+      </BentoGrid>
 
       <BatteryOptimizationNotice />
-
-      <section className="mt-6">
-        <h2 className="mb-3 font-display text-lg text-text-navy">Recent check-ins</h2>
-        <div className="rounded-xl border border-surface-border bg-surface-container-lowest">
-          {history.length === 0 && (
-            <p className="p-4 text-center text-xs text-on-surface-variant">No check-ins yet.</p>
-          )}
-          {history.slice(0, 5).map((h) => (
-            <div
-              key={h._id}
-              className="flex items-center justify-between border-b border-surface-border p-4 last:border-b-0"
-            >
-              <div>
-                <p className="font-semibold text-text-navy">
-                  {h.checkType === "check_out" ? "Check-out" : "Check-in"} · {formatLogTime(h.timestamp)}
-                </p>
-                <p className="text-xs text-on-surface-variant">{formatLogDate(h.timestamp)}</p>
-              </div>
-              <span
-                className={`font-mono text-[11px] uppercase ${
-                  h.status === "approved"
-                    ? "text-success-emerald"
-                    : h.status === "flagged"
-                      ? "text-warning-amber"
-                      : "text-on-surface-variant"
-                }`}
-              >
-                {h.score != null ? `${h.score}%` : h.status}
-              </span>
-            </div>
-          ))}
-        </div>
-      </section>
     </div>
   );
 }

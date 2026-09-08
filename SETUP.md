@@ -44,16 +44,38 @@ opening a selfie from the HR audit view. Everything else works without it.
 docker compose up --build
 ```
 
-Brings up, in dependency order: `mongo` → `minio` → `minio-init` (creates the
-`pnsm-selfies` bucket, then exits — that's expected, it's a one-shot job, not a crash)
-→ `ai-service` → `backend`. First run downloads the `mongo:7` and `minio/minio` images
-and builds the two application images (the AI service image bakes in the ONNX model
-weights and calibration file, so expect the first build to take a few minutes).
+Brings up, in dependency order: `minio` → `minio-init` (creates the `pnsm-selfies`
+bucket, then exits — that's expected, it's a one-shot job, not a crash) → `redis` →
+`ai-service` → `backend` → `tls-proxy`. First run downloads the `minio/minio` and
+`redis:7-alpine` images and builds the application images (the AI service image bakes
+in the ONNX model weights and calibration file, so expect the first build to take a
+few minutes).
+
+**MongoDB (DECISIONS.md N40)**: `backend` connects to a real MongoDB Atlas cluster —
+`MONGODB_URI` in `.env`, not the local `mongo` compose service. That local `mongo`
+container is still defined and still starts (`docker compose up` brings it up
+alongside everything else), but nothing in this project depends on it or reads from
+it any more; it is kept only as an offline-dev fallback (point `MONGODB_URI` back at
+`mongodb://mongo:27017/pnsm` in `.env` to switch back to it). If you rotate/replace
+the Atlas connection string, double-check the `replicaSet` parameter's exact case —
+Atlas's own "Connect" UI can display it with different capitalization than what the
+cluster's servers actually report (`rs.status().set` against a direct,
+single-host connection — `directConnection=true` in the URI — tells you the real
+value); a mismatched case there produces a generic 30-second server-selection timeout
+that looks identical to a network or credentials problem but is neither.
 
 Check everything is up:
 - Backend: `curl http://localhost:5000/health`
 - AI service: `curl http://localhost:8000/health` and `curl http://localhost:8000/ready`
 - MinIO console: http://localhost:9001 (login with the `MINIO_ROOT_USER`/`PASSWORD` from `.env`)
+- Redis: `docker compose exec redis redis-cli ping` (expect `PONG`)
+- TLS/PQC proxy (Item 8, optional — DECISIONS.md N30): `curl -sSk https://localhost:8443/health`.
+  This is an **additive** layer in front of `backend`, not a replacement — every dev
+  workflow above still talks to plain `http://localhost:5000`. Its self-signed cert is
+  generated fresh at image build time (`infra/tls-proxy/Dockerfile`), so `curl` needs
+  `-k`/`--insecure` and a browser will show a certificate warning; that is expected for
+  a local, unpublished cert. To see the real post-quantum hybrid key exchange it
+  negotiates: `openssl s_client -connect localhost:8443 -groups X25519MLKEM768 -tls1_3 </dev/null 2>&1 | grep "Negotiated TLS1.3 group"`.
 
 ### Bootstrap the first Super Admin
 

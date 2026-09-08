@@ -15,6 +15,14 @@
     "LocalNotifications": {
       "smallIcon": "ic_stat_pnsm",
       "iconColor": "#0A2540"
+    },
+    "BackgroundRunner": {
+      "label": "com.pnsm.workforce.heartbeat",
+      "src": "background/heartbeat.js",
+      "event": "heartbeat",
+      "repeat": true,
+      "interval": 15,
+      "autoStart": true
     }
   }
 }

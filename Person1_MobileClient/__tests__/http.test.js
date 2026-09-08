@@ -95,8 +95,62 @@ describe("http.js response interceptor", () => {
 
     expect(mockPost).toHaveBeenCalledWith(
       expect.stringContaining("/api/mobile/auth/refresh"),
-      {},
+      expect.any(Object),
       expect.objectContaining({ withCredentials: true }),
     );
+  });
+
+  /**
+   * Regression tests for a second real bug, found by the final master audit.
+   *
+   * The server pins the refresh cookie to `path=/api/auth`
+   * (Person3_BackendAPI/src/utils/jwt.ts). Cookie path matching is a prefix
+   * test, so that cookie is NEVER sent to /api/mobile/auth/refresh. The server
+   * anticipates this and accepts `refresh_token` in the body instead
+   * (mobile/auth.routes.ts — its documented "issue both" design for Capacitor
+   * WebViews, DECISIONS.md B1/N3).
+   *
+   * This client previously satisfied NEITHER branch: it dropped the login
+   * response's refresh_token and posted an empty body. Result: every mobile
+   * session died at the 15-minute access-token boundary, force-logging out a
+   * field employee mid-shift. Invisible under VITE_MOCK_BACKEND=true.
+   */
+  it("sends the held refresh_token in the body — the cookie can never reach the mobile refresh route", async () => {
+    mockPost.mockResolvedValue({ data: { access_token: "fresh-token" } });
+    http.setRefreshToken("stored-refresh-token");
+    http.setSessionExpiredHandler(vi.fn());
+
+    capturedResponseErrorHandler(makeError({ status: 401, reason: "unauthenticated" })).catch(() => {});
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(mockPost).toHaveBeenCalledWith(
+      expect.stringContaining("/api/mobile/auth/refresh"),
+      { refresh_token: "stored-refresh-token" },
+      expect.objectContaining({ withCredentials: true }),
+    );
+  });
+
+  it("stores the ROTATED refresh_token from the response — the server invalidates the previous one", async () => {
+    mockPost.mockResolvedValue({
+      data: { access_token: "fresh-token", refresh_token: "rotated-refresh-token" },
+    });
+    http.setRefreshToken("original-refresh-token");
+    http.setSessionExpiredHandler(vi.fn());
+
+    capturedResponseErrorHandler(makeError({ status: 401, reason: "unauthenticated" })).catch(() => {});
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // Miss this and the NEXT refresh presents an already-dead token.
+    expect(http.getRefreshToken()).toBe("rotated-refresh-token");
+  });
+
+  it("clears the refresh token on sign-out, and never persists it anywhere", async () => {
+    http.setAccessToken("a");
+    http.setRefreshToken("r");
+
+    http.clearAccessToken();
+
+    expect(http.getAccessToken()).toBeNull();
+    expect(http.getRefreshToken()).toBeNull();
   });
 });

@@ -1,0 +1,118 @@
+/* ==========================================================================
+   PNSM Bento design tokens — Command Center instrument panel
+
+   Dark is the operator default (master prompt §4.2) — an eight-hour shift
+   watching a live feed in a room, not a marketing surface. Colour is spent on
+   state only: presence, lateness, anomaly, geofence. `[data-theme="light"]`
+   overrides the SAME custom-property names at runtime (never a second set of
+   utilities), so every already-generated Tailwind utility class re-themes for
+   free the moment the attribute is toggled.
+
+   Existing token *names* this app already had (`ink`, `surface`, `accent`,
+   `verified`, `flagged`→pending role, `rejected`→anomaly role, `muted`,
+   `faint`, `line`, `canvas`) are kept and re-pointed to the new palette below,
+   so every already-shipped, not-yet-Bento-migrated screen re-skins instantly
+   without a single component edit. Names the master prompt introduces that
+   this app had no equivalent for (`ground`, `surface-raised`, `hairline`,
+   `ink-muted`, `ink-faint`, `geo`, `pending`, `radius-hero/-major/-minor/-chip`,
+   `spacing-gap-*`, `bento-row`) are added new. Where a role is identical under
+   two names (canvas≡ground, line≡hairline, muted≡ink-muted, faint≡ink-faint,
+   flagged≡pending, rejected≡anomaly), the old name is a plain alias of the new
+   one — one literal per role, never two values that can silently drift apart.
+
+   Font note: the master prompt asks for self-hosted Archivo Variable / Martian
+   Mono (§4.2, §1.4 "self-host every font, no CDN"). No font binaries exist in
+   this repo yet and fetching third-party font files is a separate, explicit
+   decision this pass doesn't make unilaterally — `--font-display`/`--font-body`
+   alias the existing system-font stack for now so Bento components can use the
+   master-prompt vocabulary without a broken @font-face. Swap the alias for a
+   real self-hosted @font-face once the binaries are added.
+   ========================================================================== */
+
+@theme {
+  /* Chassis — dark, operator default */
+  --color-ground:         oklch(0.18 0.018 245);
+  --color-canvas:         var(--color-ground); /* existing name, same role */
+  --color-surface:        oklch(0.235 0.020 245);
+  --color-surface-raised: oklch(0.285 0.024 245);
+  --color-hairline:       oklch(0.36 0.022 245);
+  --color-line:           var(--color-hairline); /* existing name, same role */
+  --color-line-strong:    oklch(0.44 0.026 245);
+  --color-ink:            oklch(0.96 0.006 245);
+  --color-ink-soft:       oklch(0.88 0.012 245);
+  --color-ink-muted:      oklch(0.72 0.016 245);
+  --color-muted:          var(--color-ink-muted); /* existing name, same role */
+  --color-ink-faint:      oklch(0.56 0.014 245);
+  --color-faint:          var(--color-ink-faint); /* existing name, same role */
+  --color-ink-line:       oklch(0.30 0.020 245);
+
+  --color-accent:      oklch(0.70 0.140 235);
+  --color-accent-soft: oklch(0.30 0.060 235);
+  --color-accent-dark: oklch(0.55 0.140 235);
+
+  /* Signals — state only, never decoration */
+  --color-verified:      oklch(0.78 0.150 165);
+  --color-verified-soft: oklch(0.30 0.060 165);
+  --color-flagged:       oklch(0.83 0.145 85);
+  --color-flagged-soft:  oklch(0.32 0.060 85);
+  --color-pending:       var(--color-flagged); /* master-prompt name, same signal */
+  --color-rejected:      oklch(0.66 0.205 25);
+  --color-rejected-soft: oklch(0.32 0.080 25);
+  --color-anomaly:       var(--color-rejected); /* master-prompt name, same signal */
+  --color-geo:           oklch(0.73 0.135 232);
+
+  /* Bento geometry — radius scales with tile rank */
+  --radius-xs:    3px;
+  --radius-sm:    5px;
+  --radius-md:    8px;
+  --radius-lg:    12px;
+  --radius-chip:  var(--radius-lg);
+  --radius-minor: 16px;
+  --radius-major: 22px;
+  --radius-hero:  28px;
+
+  --spacing-gap-sm: 0.75rem;
+  --spacing-gap-md: 1rem;
+  --spacing-gap-lg: 1.25rem;
+  --bento-row: 88px;
+
+  --font-sans: ui-sans-serif, "Segoe UI Variable Text", "Segoe UI", system-ui,
+    -apple-system, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Mono", "JetBrains Mono", "SF Mono",
+    Menlo, Consolas, monospace;
+  --font-display: var(--font-sans);
+  --font-body:    var(--font-sans);
+}
+
+/* Light theme — the app's original, already contrast-verified palette,
+   preserved verbatim as the override rather than re-derived. */
+[data-theme="light"] {
+  --color-ground:         #f5f7fa;
+  --color-canvas:         #f5f7fa;
+  --color-surface:        #ffffff;
+  --color-surface-raised: #ffffff;
+  --color-hairline:       #dde3ec;
+  --color-line:           #dde3ec;
+  --color-line-strong:    #c3cddc;
+  --color-ink:            #0f1b2d;
+  --color-ink-soft:       #1b2a42;
+  --color-ink-muted:      #5b6a80;
+  --color-muted:          #5b6a80;
+  --color-ink-faint:      #8a97a8;
+  --color-faint:          #8a97a8;
+  --color-ink-line:       #24354f;
+
+  --color-accent:      #1e5fa8;
+  --color-accent-soft: #e8f0fa;
+  --color-accent-dark: #164a85;
+
+  --color-verified:      #0e7c5a;
+  --color-verified-soft: #e4f4ee;
+  --color-flagged:       #b4690e;
+  --color-flagged-soft:  #fdf1de;
+  --color-pending:       #b4690e;
+  --color-rejected:      #b3261e;
+  --color-rejected-soft: #fbe9e7;
+  --color-anomaly:       #b3261e;
+  --color-geo:           #1e7ca8;
+}

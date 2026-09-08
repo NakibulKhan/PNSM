@@ -27,6 +27,7 @@ from app.security.guards import SecurityGuards
 from app.security.headers import describe_policy
 from app.security.lockout import LockoutPolicy
 from app.services.enroll import EnrollService
+from app.services.liveness import LivenessService
 from app.services.pin_service import PinService
 from app.services.presign import PresignService
 from app.services.verify import VerifyService
@@ -132,6 +133,7 @@ class Runtime:
         )
         self.pin_service = PinService(self.settings, self.lockout)
         self.presign_service = PresignService(self.store, self.settings)
+        self.liveness_service = LivenessService(self.store, self.settings)
 
         self.warm = False
         self.warmup_info: dict[str, Any] = {}

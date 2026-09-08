@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import rateLimit from 'express-rate-limit';
+import { createRateLimiter } from '../../middleware/rateLimiter';
 import { asyncHandler } from '../../utils/asyncHandler';
 import { validate } from '../../middleware/validate';
 import { requireAuth } from '../../middleware/auth';
@@ -14,7 +14,7 @@ const router = Router();
 // — this is Person 3's front-door limiter, intentionally a little looser so a
 // legitimate retry-after-network-blip never gets blocked before reaching the
 // AI service's own, more precise limiter.
-const checkinLimiter = rateLimit({ windowMs: 60 * 1000, limit: 15, standardHeaders: true, legacyHeaders: false });
+const checkinLimiter = createRateLimiter({ keyPrefix: 'mobile-checkin', points: 15, durationSec: 60, blockDurationSec: 120 });
 
 router.post(
   '/checkin',

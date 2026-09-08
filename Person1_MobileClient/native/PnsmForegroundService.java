@@ -26,7 +26,22 @@ import com.google.android.gms.location.Priority;
  * ===========================================================================
  * This file is NOT compiled by the current build. It is provided so the team
  * has a correct starting point, but registering it requires deliberate steps
- * that must not happen by accident:
+ * that must not happen by accident.
+ *
+ * ON THE `@capawesome-team/capacitor-android-foreground-service` PLUGIN: both
+ * blueprints name this exact package. It is a real, installable dependency
+ * (already added to package.json) and would replace this hand-rolled Service
+ * outright in a real integration. This scaffold keeps the hand-rolled
+ * version alongside it deliberately, not out of not having gotten to it:
+ * the hand-rolled Service is fully auditable (no third-party native code in
+ * the location/telemetry path, which is exactly the kind of code this
+ * project's own security posture treats carefully), and there is still no
+ * `android/` project to wire either implementation into regardless. Adding
+ * the real dependency makes the blueprint's exact-named tool available and
+ * ready to evaluate the moment `npx cap add android` happens, without
+ * forcing a rewrite of an already-designed scaffold on a hunch.
+ *
+ * Manual steps before this hand-rolled Service compiles or does anything:
  *
  *   1. Copy into android/app/src/main/java/com/pnsm/workforce/ after
  *      `npx cap add android`.
@@ -48,6 +63,30 @@ import com.google.android.gms.location.Priority;
  * only runs while the WebView is alive. Once this service is live, the
  * authoritative interval is the LocationRequest below, and the JS heartbeat
  * should be reduced to foreground-only to avoid double-reporting.
+ *
+ * ===========================================================================
+ * ANDROID 14/15's 6-HOUR CUMULATIVE FOREGROUND-SERVICE BUDGET (Item 12,
+ * Flawless/Ultra blueprint), AND HOW THIS CODEBASE ALREADY STAYS UNDER IT.
+ * ===========================================================================
+ * Android 14 introduced, and Android 15 tightens, a per-24-hour-window
+ * budget shared across every `dataSync`/`mediaProcessing`-type foreground
+ * service a single app runs — roughly 6 cumulative hours before the OS
+ * refuses to let a new one of those types start until the window resets.
+ * This service already avoids competing for that budget for anything BUT
+ * genuinely active tracking: periodic, low-priority heartbeat telemetry runs
+ * through the Capacitor Background Runner instead (see
+ * src/background/heartbeat.js and its own STATUS note on the same
+ * unresolved-credential problem PnsmTelemetryUploader.java documents below),
+ * which is not a foreground service at all and so never touches this budget.
+ * This service's own runtime is reserved for the case the budget model is
+ * actually built for: a bounded, genuinely active field-operation window, not
+ * a background service kept alive all day to simulate one.
+ *
+ * The iOS equivalent of this same "don't let the OS silently stop tracking"
+ * problem — CLLocationManager's predictive suspend-when-stationary heuristic
+ * — has no service-layer analogue on Android, but see the companion scaffold
+ * native/PnsmLocationDelegate.swift for the iOS-side configuration and the
+ * same honest documentation convention applied there.
  */
 public class PnsmForegroundService extends Service {
 

@@ -3,9 +3,11 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { UserPlus, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
 import { Select } from '@/components/ui/input';
 import { SearchInput } from '@/components/layout/topbar';
+import { BentoGrid } from '@/components/bento/BentoGrid';
+import { BentoTile, useTileHeading } from '@/components/bento/BentoTile';
+import { TileHeader } from '@/components/bento/TileHeader';
 import { DataTable } from './data-table';
 import { employeeColumns } from './columns';
 import { RbacGate } from '@/components/common/rbac-gate';
@@ -57,53 +59,72 @@ export function EmployeesView() {
   };
 
   return (
-    <>
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        <SearchInput value={search} onChange={setSearch} placeholder="Search name, ID or email" />
+    <BentoGrid>
+      <BentoTile rank="rail">
+        <RailHeading />
+        <div className="flex flex-wrap items-center gap-2 p-4">
+          <SearchInput value={search} onChange={setSearch} placeholder="Search name, ID or email" />
 
-        <Select
-          value={officeId}
-          onChange={(event) => {
-            setOfficeId(event.target.value);
-            setPage(1);
-          }}
-          className="w-auto min-w-[170px]"
-          aria-label="Filter by office"
-        >
-          <option value="">All offices</option>
-          {offices?.map((office) => (
-            <option key={office._id} value={office._id}>
-              {office.office_name}
-            </option>
-          ))}
-        </Select>
+          <Select
+            value={officeId}
+            onChange={(event) => {
+              setOfficeId(event.target.value);
+              setPage(1);
+            }}
+            className="w-auto min-w-[170px]"
+            aria-label="Filter by office"
+          >
+            <option value="">All offices</option>
+            {offices?.map((office) => (
+              <option key={office._id} value={office._id}>
+                {office.office_name}
+              </option>
+            ))}
+          </Select>
 
-        <div className="ml-auto flex items-center gap-2">
-          <Button variant="secondary" size="sm" onClick={exportList}>
-            <Download size={13} aria-hidden /> Export list
-          </Button>
-          <RbacGate permission="employee:write">
-            <Link to="/employees/new">
-              <Button size="sm">
-                <UserPlus size={14} aria-hidden /> Add employee
-              </Button>
-            </Link>
-          </RbacGate>
+          <div className="ml-auto flex items-center gap-2">
+            <Button variant="secondary" size="sm" onClick={exportList}>
+              <Download size={13} aria-hidden /> Export list
+            </Button>
+            <RbacGate permission="employee:write">
+              <Link to="/employees/new">
+                <Button size="sm">
+                  <UserPlus size={14} aria-hidden /> Add employee
+                </Button>
+              </Link>
+            </RbacGate>
+          </div>
         </div>
-      </div>
+      </BentoTile>
 
-      <Card>
-        <DataTable
-          columns={employeeColumns}
-          data={data?.rows ?? []}
-          meta={data?.meta}
-          isLoading={isPending}
-          getRowId={(row) => row._id}
-          onPageChange={setPage}
-          emptyTitle="No employees match"
-          emptyMessage="Clear the search or choose a different office."
+      <BentoTile rank="wide" span="bento-span-tall">
+        <TileHeader
+          title="Roster"
+          support={data?.meta ? `${data.meta.total} enrolled` : undefined}
         />
-      </Card>
-    </>
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <DataTable
+            columns={employeeColumns}
+            data={data?.rows ?? []}
+            meta={data?.meta}
+            isLoading={isPending}
+            getRowId={(row) => row._id}
+            onPageChange={setPage}
+            emptyTitle="No employees match"
+            emptyMessage="Clear the search or choose a different office."
+          />
+        </div>
+      </BentoTile>
+    </BentoGrid>
+  );
+}
+
+/** A rail tile is just a filter bar, but every tile still needs its own accessible name (§10). */
+function RailHeading() {
+  const { id } = useTileHeading();
+  return (
+    <h3 id={id} className="sr-only">
+      Filter employees
+    </h3>
   );
 }

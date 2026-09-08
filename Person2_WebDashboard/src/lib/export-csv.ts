@@ -22,7 +22,7 @@ export function downloadBlob(blob: Blob, filename: string): void {
 
 export function attendanceToRows(logs: AttendanceLog[]) {
   return logs.map((log) => {
-    const { lat, lng } = pointToLatLng(log.gps_location);
+    const point = pointToLatLng(log.gps_location);
     return {
       'Employee ID': log.employee_code ?? '',
       Employee: log.employee_name ?? '',
@@ -32,8 +32,8 @@ export function attendanceToRows(logs: AttendanceLog[]) {
       Type: checkTypeLabel(log.check_type),
       'Face match %': log.face_match_score,
       Status: STATUS_LABEL[log.status],
-      Latitude: lat.toFixed(6),
-      Longitude: lng.toFixed(6),
+      Latitude: point ? point.lat.toFixed(6) : '',
+      Longitude: point ? point.lng.toFixed(6) : '',
       'Mock location': log.mock_location_detected ? 'Yes' : 'No',
     };
   });

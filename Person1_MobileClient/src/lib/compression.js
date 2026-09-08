@@ -66,8 +66,51 @@ function canvasToBlob(canvas, quality) {
  * Never throws on "still too big" — it returns underLimit:false and lets the
  * caller decide. Silently shipping an oversized payload is the one thing this
  * module must not do.
+ *
+ * Item 14 (Flawless/Ultra blueprint): offloads the up-to-8-pass re-encode
+ * loop to a Web Worker (compression.worker.js) via OffscreenCanvas, so it
+ * never blocks the main thread during a check-in. Falls back to running the
+ * identical loop synchronously here when Worker/OffscreenCanvas are
+ * unavailable (some older WebViews lack OffscreenCanvas) — defensive, not
+ * speculative, since that gap is real on some Android WebView versions.
  */
 export async function compressSelfie(sourceDataUrl) {
+  if (typeof Worker !== "undefined" && typeof OffscreenCanvas !== "undefined") {
+    try {
+      return await compressSelfieInWorker(sourceDataUrl);
+    } catch {
+      // Worker construction/message failure (e.g. bundler/environment quirk
+      // neither of the two typeof checks caught) — fall through to the
+      // proven synchronous path rather than fail the check-in outright.
+    }
+  }
+  return compressSelfieMainThread(sourceDataUrl);
+}
+
+/** Runs compression.worker.js and terminates it once the one message round-trips. */
+function compressSelfieInWorker(sourceDataUrl) {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(new URL("./compression.worker.js", import.meta.url), { type: "module" });
+    const cleanup = () => worker.terminate();
+    worker.onmessage = (event) => {
+      cleanup();
+      const data = event.data;
+      if (data && data.ok) {
+        const { ok: _ok, ...result } = data;
+        resolve(result);
+      } else {
+        reject(new Error((data && data.error) || "compression worker failed"));
+      }
+    };
+    worker.onerror = (err) => {
+      cleanup();
+      reject(err);
+    };
+    worker.postMessage({ dataUrl: sourceDataUrl });
+  });
+}
+
+async function compressSelfieMainThread(sourceDataUrl) {
   const img = await loadImage(sourceDataUrl);
 
   let { width, height } = fitDimensions(img.naturalWidth, img.naturalHeight);

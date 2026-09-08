@@ -300,6 +300,45 @@ class Settings(BaseSettings):
         default="", validation_alias=AliasChoices("PNSM_ADMIN_TOKEN", "ADMIN_TOKEN")
     )
 
+    # ------------------------------------------------- liveness (Item 3, Flawless/
+    # Ultra blueprint). Real, own-built active-illumination PAD signal -- not
+    # ISO/IEC 30107-3 certified, which needs a real accredited physical lab
+    # (iBeta) and is out of scope. See app/services/liveness.py.
+    liveness_max_frame_bytes: int = Field(
+        default=102_400,
+        ge=1024,
+        le=1_048_576,
+        validation_alias=AliasChoices("PNSM_LIVENESS_MAX_FRAME_BYTES", "LIVENESS_MAX_FRAME_BYTES"),
+    )
+    #: Percentage confidence (0-100) a challenge must reach to pass. Not a
+    #: certified detection rate -- a starting point to tune against real
+    #: captures, documented plainly rather than presented as calibrated.
+    liveness_min_confidence: float = Field(
+        default=55.0,
+        ge=0.0,
+        le=100.0,
+        validation_alias=AliasChoices("PNSM_LIVENESS_MIN_CONFIDENCE", "LIVENESS_MIN_CONFIDENCE"),
+    )
+
+    # ------------------------------------------------- passive PAD (Item 3b,
+    # Flawless/Ultra blueprint). Real classical-CV heuristics (FFT moire
+    # detection, Laplacian edge sharpness via app.ai.quality.blur_variance) --
+    # not a trained anti-spoofing model, not ISO/IEC 30107-3 certified. See
+    # app/ai/passive_pad.py.
+    #: Above this FFT mid-band energy ratio, a frame is scored as fully
+    #: "moire-suspicious" (confidence contribution floors at 0). A tuning
+    #: starting point, not a measured threshold -- there is no labeled
+    #: attack-instrument dataset here to calibrate against. 0.55 was picked
+    #: empirically against synthetic test patterns (a 1/f "natural-like"
+    #: image measures ~0.49, a hard periodic grid ~0.63 -- see
+    #: tests/unit/test_passive_pad.py), not against real photographs.
+    passive_pad_moire_baseline: float = Field(
+        default=0.55,
+        ge=0.0,
+        le=1.0,
+        validation_alias=AliasChoices("PNSM_PASSIVE_PAD_MOIRE_BASELINE", "PASSIVE_PAD_MOIRE_BASELINE"),
+    )
+
     # ------------------------------------------------------------- validators
     @field_validator("log_level")
     @classmethod

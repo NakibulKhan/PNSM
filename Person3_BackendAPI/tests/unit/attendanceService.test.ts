@@ -38,6 +38,8 @@ import { emitAttendanceFlagged, emitAttendanceNew, emitSpoofAlert } from '@/serv
 import { performCheckin } from '@/services/attendanceService';
 import { MobileApiError } from '@/utils/errors';
 import type { MobileCheckinInput } from '@/validation/mobileSchemas';
+import { seal } from '@/crypto/fieldEnvelope';
+import { getGeoKeyProvider } from '@/crypto/geoKeyProvider';
 
 const mockedUser = User as unknown as { findById: jest.Mock };
 const mockedFaceEmbedding = FaceEmbedding as unknown as { findOne: jest.Mock };
@@ -54,7 +56,10 @@ const BASE_INPUT: MobileCheckinInput = {
   gps: { lat: 23.8151, lng: 90.4257 },
   geofence_id: '507f1f77bcf86cd799439012',
   pin: '4821',
-  liveness_passed: true,
+  liveness_frames: [
+    { color: 'red', image: { kind: 'base64', value: 'AAAA' } },
+    { color: 'blue', image: { kind: 'base64', value: 'AAAA' } },
+  ],
   object_key: 'checkins/2026/09/14/u1/01JB80.webp',
   device: {
     platform: 'android',
@@ -66,8 +71,30 @@ const BASE_INPUT: MobileCheckinInput = {
   },
 };
 
-function mockAiClient(overrides: { verifyPin?: jest.Mock; verify?: jest.Mock } = {}) {
+/**
+ * A minimal stand-in for a Mongoose Document, matching what
+ * performCheckin() actually calls on the object AttendanceLog.create()
+ * resolves: `.populate()` (in place, mutates `user_id` to the object it's
+ * given) and `.toObject()` (a plain-object snapshot of current fields).
+ * `AttendanceLog.create` is mocked at the module boundary (`jest.mock('@/models', ...)`
+ * above), so there is no real Mongoose document to construct here.
+ */
+function createMockAttendanceLogDoc(fields: Record<string, unknown>) {
+  const doc: Record<string, unknown> = { ...fields };
+  return {
+    ...doc,
+    populate: jest.fn(async (_path: string, _select: string) => doc),
+    toObject: jest.fn(() => ({ ...doc })),
+  };
+}
+
+function mockAiClient(
+  overrides: { verifyPin?: jest.Mock; verify?: jest.Mock; livenessChallenge?: jest.Mock } = {},
+) {
   const client = {
+    livenessChallenge:
+      overrides.livenessChallenge ??
+      jest.fn().mockResolvedValue({ passed: true, confidence: 95, per_frame_scores: [95, 95] }),
     verifyPin: overrides.verifyPin ?? jest.fn().mockResolvedValue({ match: true, locked: false, attempts_left: 5, retry_after_s: 0 }),
     verify:
       overrides.verify ??
@@ -79,6 +106,7 @@ function mockAiClient(overrides: { verifyPin?: jest.Mock; verify?: jest.Mock } =
         reason_code: 'OK_MATCH',
         hr_alert: false,
         quality: {},
+        passive_pad: { moire_energy_ratio: 0.1, edge_sharpness: 150, confidence: 92 },
         model_version: 'v1',
         image_hash: 'hash',
         capture_skew_s: 1,
@@ -93,11 +121,9 @@ function mockHappyPathDeps() {
   mockedUser.findById.mockReturnValue({ select: jest.fn().mockResolvedValue({ is_active: true, pin_hash: 'hashed' }) });
   mockedIsInsideGeofence.mockResolvedValue({ inside: true, geofence_id: 'g1', distance_meters: 4 });
   mockedFaceEmbedding.findOne.mockReturnValue({ select: jest.fn().mockResolvedValue({ envelope: { v: 2 } }) });
-  mockedAttendanceLog.create.mockResolvedValue({ _id: 'log1' });
-  mockedAttendanceLog.findById.mockReturnValue({
-    populate: jest.fn().mockReturnThis(),
-    lean: jest.fn().mockResolvedValue({ _id: 'log1', user_id: { name: 'Rafiq', employee_code: 'PNSM-01' } }),
-  });
+  mockedAttendanceLog.create.mockResolvedValue(
+    createMockAttendanceLogDoc({ _id: 'log1', user_id: { _id: 'u1', name: 'Rafiq', employee_code: 'PNSM-01' } }),
+  );
   mockedNotification.create.mockResolvedValue({ _id: 'n1', message: 'msg', created_at: new Date() });
 }
 
@@ -123,6 +149,33 @@ describe('performCheckin', () => {
     expect(emitAttendanceFlagged).not.toHaveBeenCalled();
   });
 
+  it('broadcasts the DECRYPTED gps_location over the socket, not the raw AES-256-GCM envelope (Item 9 regression)', async () => {
+    mockHappyPathDeps();
+    mockAiClient();
+    const userId = '507f1f77bcf86cd799439011';
+    const plainPoint = { type: 'Point' as const, coordinates: [90.4257, 23.8151] as [number, number] };
+    const envelope = seal(plainPoint, { userRef: userId, field: 'gps_location', provider: getGeoKeyProvider() });
+    // Envelope material {v,kv,alg,iv,ct,tag} must never reach a socket
+    // consumer directly — toAttendanceLogSocketPayload() must decrypt it
+    // first, the same way every other AttendanceLog read path already does.
+    mockedAttendanceLog.create.mockResolvedValue(
+      createMockAttendanceLogDoc({
+        _id: 'log1',
+        user_id: { _id: userId, name: 'Rafiq', employee_code: 'PNSM-01' },
+        gps_location: envelope,
+      }),
+    );
+
+    await performCheckin(userId, BASE_INPUT);
+
+    expect(emitAttendanceNew).toHaveBeenCalledWith(
+      expect.objectContaining({ gps_location: plainPoint }),
+    );
+    const broadcast = (emitAttendanceNew as jest.Mock).mock.calls[0][0];
+    expect(broadcast.gps_location).not.toHaveProperty('ct');
+    expect(broadcast.gps_location).not.toHaveProperty('iv');
+  });
+
   it('flags a check-in, still writes the log, and raises a notification', async () => {
     mockHappyPathDeps();
     mockAiClient({
@@ -134,6 +187,7 @@ describe('performCheckin', () => {
         reason_code: 'LOW_CONFIDENCE',
         hr_alert: true,
         quality: {},
+        passive_pad: { moire_energy_ratio: 0.1, edge_sharpness: 150, confidence: 92 },
         model_version: 'v1',
         image_hash: 'hash',
         capture_skew_s: 1,
@@ -149,13 +203,40 @@ describe('performCheckin', () => {
     expect(mockedNotification.create).toHaveBeenCalledTimes(1);
   });
 
-  it('rejects immediately on liveness_passed:false without touching the DB or AI service', async () => {
-    await expect(performCheckin('507f1f77bcf86cd799439011', { ...BASE_INPUT, liveness_passed: false })).rejects.toMatchObject({
+  it('rejects with 422 liveness_failed when the AI service reports the challenge did not pass, before touching the DB or the PIN', async () => {
+    const client = mockAiClient({
+      livenessChallenge: jest.fn().mockResolvedValue({ passed: false, confidence: 12, per_frame_scores: [12, 12] }),
+    });
+
+    await expect(performCheckin('507f1f77bcf86cd799439011', BASE_INPUT)).rejects.toMatchObject({
       statusCode: 422,
       reason: 'liveness_failed',
     });
+    expect(client.livenessChallenge).toHaveBeenCalledWith(
+      expect.objectContaining({ userRef: '507f1f77bcf86cd799439011', frames: BASE_INPUT.liveness_frames }),
+    );
     expect(mockedUser.findById).not.toHaveBeenCalled();
-    expect(mockedGetAiClient).not.toHaveBeenCalled();
+    expect(client.verifyPin).not.toHaveBeenCalled();
+  });
+
+  it('rejects with 422 liveness_failed when fewer than 2 frames are submitted, without ever calling Person4 (camera-denied real-world case)', async () => {
+    const client = mockAiClient();
+
+    await expect(
+      performCheckin('507f1f77bcf86cd799439011', { ...BASE_INPUT, liveness_frames: [] }),
+    ).rejects.toMatchObject({ statusCode: 422, reason: 'liveness_failed' });
+    expect(client.livenessChallenge).not.toHaveBeenCalled();
+  });
+
+  it('surfaces a liveness-challenge AI-service failure as a retryable 502', async () => {
+    mockAiClient({
+      livenessChallenge: jest.fn().mockRejectedValue(new PnsmAiError(502, { error: { code: 'UPSTREAM_STORAGE_ERROR', message: 'down', retryable: true } })),
+    });
+
+    await expect(performCheckin('507f1f77bcf86cd799439011', BASE_INPUT)).rejects.toMatchObject({
+      statusCode: 502,
+      reason: 'server_error',
+    });
   });
 
   it('rejects with 401 pin_mismatch when the AI service reports no match', async () => {
@@ -175,9 +256,9 @@ describe('performCheckin', () => {
 
   it('rejects with 409 pin_not_set when the employee has no PIN hash yet', async () => {
     mockedUser.findById.mockReturnValue({ select: jest.fn().mockResolvedValue({ is_active: true, pin_hash: undefined }) });
+    mockAiClient();
 
     await expect(performCheckin('507f1f77bcf86cd799439011', BASE_INPUT)).rejects.toMatchObject({ statusCode: 409, reason: 'pin_not_set' });
-    expect(mockedGetAiClient).not.toHaveBeenCalled();
   });
 
   it('rejects with 422 outside_geofence when the geofence check fails, before calling the AI verify step', async () => {

@@ -64,12 +64,17 @@ function makeDeps(overrides = {}) {
   };
 }
 
+const PASSING_LIVENESS_FRAMES = [
+  { color: "red", image: { kind: "base64", value: "AAAA" } },
+  { color: "blue", image: { kind: "base64", value: "AAAA" } },
+];
+
 function run(deps, opts = {}) {
   return runCheckin({
     office,
     employeeId: "emp-1",
     pin: "4821",
-    runLiveness: async () => true,
+    runLiveness: async () => PASSING_LIVENESS_FRAMES,
     deps,
     ...opts,
   });
@@ -119,7 +124,12 @@ describe("payload matches Person 3's real mobileCheckinSchema", () => {
     expect(typeof p.gps.lat).toBe("number");
     expect(typeof p.gps.lng).toBe("number");
     expect(p.geofence_id).toBe("geofence-1");
-    expect(typeof p.liveness_passed).toBe("boolean");
+    expect(Array.isArray(p.liveness_frames)).toBe(true);
+    expect(p.liveness_frames.length).toBeGreaterThanOrEqual(2);
+    for (const frame of p.liveness_frames) {
+      expect(["red", "green", "blue", "white"]).toContain(frame.color);
+      expect(frame.image).toEqual({ kind: "base64", value: expect.any(String) });
+    }
     expect(typeof p.pin).toBe("string");
     expect(p.object_key).toBe("checkins/2026/09/03/emp-1/01JB80.jpg");
 
@@ -286,7 +296,7 @@ describe("permissions", () => {
 });
 
 describe("liveness", () => {
-  it("forwards a liveness failure to the backend rather than deciding locally", async () => {
+  it("forwards captured challenge frames to the backend rather than deciding pass/fail locally", async () => {
     const deps = makeDeps({
       submitCheckin: vi.fn(async () => ({
         status: "rejected",
@@ -294,9 +304,20 @@ describe("liveness", () => {
         face_match_score: null,
       })),
     });
-    const { outcome } = await run(deps, { runLiveness: async () => false });
-    expect(deps.submitCheckin.mock.calls[0][0].liveness_passed).toBe(false);
+    // The client only ever captures frames — it never computes pass/fail
+    // itself, even when it already suspects the challenge will not pass. An
+    // empty array (e.g. camera denied) is a legitimate real-world case: the
+    // server fails closed on too few frames rather than this client
+    // inventing a boolean.
+    const { outcome } = await run(deps, { runLiveness: async () => [] });
+    expect(deps.submitCheckin.mock.calls[0][0].liveness_frames).toEqual([]);
     expect(outcome.title).toBe("Liveness check failed");
+  });
+
+  it("defaults to an empty frame set when no runLiveness is supplied at all", async () => {
+    const deps = makeDeps();
+    await run(deps, { runLiveness: undefined });
+    expect(deps.submitCheckin.mock.calls[0][0].liveness_frames).toEqual([]);
   });
 });
 

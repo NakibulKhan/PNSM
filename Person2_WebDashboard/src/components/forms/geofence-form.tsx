@@ -13,15 +13,24 @@
  * 2. VERIFICATION GATE. FR-02 requires the office location to be confirmed on a
  *    map before the geofence is saved, so the submit button stays disabled until
  *    the pin has been placed and explicitly confirmed.
+ *
+ * Renders as several Bento tiles, not one card — the `<form>` itself uses
+ * `className="contents"` so it drops out of layout and its tile children
+ * become direct grid items of the caller's `BentoGrid` (`geofence-manager.tsx`),
+ * matching the master prompt's own §6.5 wireframe (hero map + anchor/radius
+ * squares + a save rail) while keeping the real form's full field set — office
+ * name/address have no place in that minimal wireframe, so they get their own
+ * tile rather than being dropped.
  */
 import { useEffect, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { MapPinCheck, Save, Trash2, TriangleAlert } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardBody, CardFooter, CardHeader } from '@/components/ui/card';
 import { Field, Input } from '@/components/ui/input';
 import { Slider } from '@/components/ui/slider';
 import { GeofenceMap } from '@/components/map/geofence-map';
+import { BentoTile } from '@/components/bento/BentoTile';
+import { TileHeader } from '@/components/bento/TileHeader';
 import { useToast } from '@/components/ui/toast';
 import { api } from '@/api/client';
 import { queryKeys } from '@/lib/query-keys';
@@ -57,7 +66,10 @@ export function GeofenceForm({
   const initial = existing ? pointToLatLng(existing.location) : null;
 
   const [officeName, setOfficeName] = useState(existing?.office_name ?? '');
-  const [address, setAddress] = useState('');
+  // Hydrated from the record, not blank. Leaving this empty meant every edit
+  // PATCHed `address: ''` and silently erased the office's stored address —
+  // the backend now returns `address` on the geofence DTO so this can round-trip.
+  const [address, setAddress] = useState(existing?.address ?? '');
   const [lat, setLat] = useState(initial?.lat ?? DEFAULT_MAP_CENTER[0]);
   const [lng, setLng] = useState(initial?.lng ?? DEFAULT_MAP_CENTER[1]);
   const [radius, setRadius] = useState(existing?.radius_meters ?? DEFAULT_GEOFENCE_RADIUS);
@@ -78,6 +90,7 @@ export function GeofenceForm({
     setLng(point.lng);
     setRadius(existing.radius_meters);
     setOfficeName(existing.office_name ?? '');
+    setAddress(existing.address ?? '');
     setVerified(true);
   }, [existing]);
 
@@ -153,113 +166,119 @@ export function GeofenceForm({
   };
 
   return (
-    <form onSubmit={submit}>
-      <Card>
-        <CardHeader
+    <form onSubmit={submit} className="contents">
+      <BentoTile rank="wide" span="bento-span-tall">
+        <TileHeader
           title={existing ? `Edit ${existing.office_name}` : 'Add an office geofence'}
-          description="Drop the pin on the building, then set how far from it a check-in is accepted."
+          support="Drop the pin on the building, then set how far from it a check-in is accepted."
         />
+        <div className="min-h-0 flex-1 overflow-y-auto p-4 pt-2">
+          {/* Fixed height chosen to fit this tile's clamped max-height (bento.css)
+              alongside the header above it — GeofenceMap's own WebGL lifecycle
+              (map/marker creation, cleanup) is untouched, only the container's
+              CSS height, which the component already exposes for exactly this. */}
+          <GeofenceMap lat={lat} lng={lng} radiusMeters={radius} onMove={movePin} heightClass="h-[300px]" />
+          <p className="mt-1.5 text-[11px] text-faint">
+            Click the map or drag the pin to reposition. Moving the pin clears the confirmation.
+          </p>
+        </div>
+      </BentoTile>
 
-        <CardBody className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
-          <div>
-            <GeofenceMap lat={lat} lng={lng} radiusMeters={radius} onMove={movePin} />
-            <p className="mt-1.5 text-[11px] text-faint">
-              Click the map or drag the pin to reposition. Moving the pin clears the confirmation.
+      <BentoTile rank="square">
+        <TileHeader title="Office details" />
+        <div className="flex flex-1 flex-col gap-3 p-4 pt-2">
+          <Field label="Office name" required>
+            <Input
+              value={officeName}
+              onChange={(event) => setOfficeName(event.target.value)}
+              placeholder="Gulshan Office"
+            />
+          </Field>
+          <Field label="Address" hint="Shown in reports and on the live map">
+            <Input
+              value={address}
+              onChange={(event) => setAddress(event.target.value)}
+              placeholder="Plot 12, Road 103, Gulshan-2"
+            />
+          </Field>
+        </div>
+      </BentoTile>
+
+      <BentoTile rank="square">
+        <TileHeader title="Anchor" />
+        <div className="flex flex-1 flex-col gap-2 p-4 pt-2">
+          <p className="tnum text-[13px] text-ink">{formatLatLng(lat, lng)}</p>
+          <p className="tnum text-[10.5px] text-faint">
+            Stored as GeoJSON [{lng.toFixed(6)}, {lat.toFixed(6)}]
+          </p>
+          {outsideBangladesh ? (
+            <p className="mt-1 flex items-start gap-1.5 rounded-sm border border-flagged/30 bg-flagged-soft px-2.5 py-2 text-[11.5px] text-flagged">
+              <TriangleAlert size={13} className="mt-0.5 shrink-0" aria-hidden />
+              This pin is outside Bangladesh. If that is unexpected, the coordinates may be
+              reversed.
             </p>
+          ) : null}
+        </div>
+      </BentoTile>
+
+      <BentoTile rank="square">
+        <TileHeader title="Check-in radius" action={<span className="tnum text-ink">{radius} m</span>} />
+        <div className="flex flex-1 flex-col p-4 pt-2">
+          <Slider
+            value={radius}
+            min={MIN_GEOFENCE_RADIUS}
+            max={MAX_GEOFENCE_RADIUS}
+            step={5}
+            onValueChange={setRadius}
+            aria-label="Check-in radius in metres"
+          />
+          <div className="tnum mt-1 flex justify-between text-[10.5px] text-faint">
+            <span>{MIN_GEOFENCE_RADIUS} m</span>
+            <span>{MAX_GEOFENCE_RADIUS} m</span>
           </div>
 
-          <div className="space-y-4">
-            <Field label="Office name" required>
-              <Input
-                value={officeName}
-                onChange={(event) => setOfficeName(event.target.value)}
-                placeholder="Gulshan Office"
-              />
-            </Field>
-
-            <Field label="Address" hint="Shown in reports and on the live map">
-              <Input
-                value={address}
-                onChange={(event) => setAddress(event.target.value)}
-                placeholder="Plot 12, Road 103, Gulshan-2"
-              />
-            </Field>
-
-            <div>
-              <span className="eyebrow mb-1.5 block">
-                Check-in radius <span className="tnum text-ink">{radius} m</span>
-              </span>
-              <Slider
-                value={radius}
-                min={MIN_GEOFENCE_RADIUS}
-                max={MAX_GEOFENCE_RADIUS}
-                step={5}
-                onValueChange={setRadius}
-                aria-label="Check-in radius in metres"
-              />
-              <div className="tnum mt-1 flex justify-between text-[10.5px] text-faint">
-                <span>{MIN_GEOFENCE_RADIUS} m</span>
-                <span>{MAX_GEOFENCE_RADIUS} m</span>
-              </div>
-
-              {/*
-                Presets, not decoration. A 50 m perimeter suits an indoor office
-                where GPS drift is the main risk; a construction site needs 500 m
-                or genuine arrivals get rejected. Naming the situation is more
-                useful to an HR user than asking them to guess a number.
-              */}
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {RADIUS_PRESETS.map((preset) => (
-                  <button
-                    key={preset.label}
-                    type="button"
-                    onClick={() => setRadius(preset.meters)}
-                    aria-pressed={radius === preset.meters}
-                    className={cn(
-                      'rounded-xs border px-2 py-1 text-[11px] font-medium transition-colors',
-                      radius === preset.meters
-                        ? 'border-accent bg-accent-soft text-accent-dark'
-                        : 'border-line-strong bg-surface text-muted hover:bg-canvas',
-                    )}
-                  >
-                    {preset.label} <span className="tnum">{preset.meters} m</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="rounded-sm border border-line bg-canvas p-3">
-              <p className="eyebrow mb-1">Centre coordinates</p>
-              <p className="tnum text-[12px] text-ink">{formatLatLng(lat, lng)}</p>
-              <p className="tnum mt-1 text-[10.5px] text-faint">
-                Stored as GeoJSON [{lng.toFixed(6)}, {lat.toFixed(6)}]
-              </p>
-            </div>
-
-            {outsideBangladesh ? (
-              <p className="flex items-start gap-1.5 rounded-sm border border-flagged/30 bg-flagged-soft px-2.5 py-2 text-[11.5px] text-flagged">
-                <TriangleAlert size={13} className="mt-0.5 shrink-0" aria-hidden />
-                This pin is outside Bangladesh. If that is unexpected, the coordinates may be
-                reversed.
-              </p>
-            ) : null}
-
-            <label className="flex cursor-pointer items-start gap-2 rounded-sm border border-line bg-surface p-3">
-              <input
-                type="checkbox"
-                checked={verified}
-                onChange={(event) => setVerified(event.target.checked)}
-                className="mt-0.5 h-3.5 w-3.5 accent-[var(--color-accent)]"
-              />
-              <span className="text-[11.5px] text-muted">
-                <span className="font-semibold text-ink">I have checked the pin</span> — it sits on the
-                correct building on the map.
-              </span>
-            </label>
+          {/*
+            Presets, not decoration. A 50 m perimeter suits an indoor office
+            where GPS drift is the main risk; a construction site needs 500 m
+            or genuine arrivals get rejected. Naming the situation is more
+            useful to an HR user than asking them to guess a number.
+          */}
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {RADIUS_PRESETS.map((preset) => (
+              <button
+                key={preset.label}
+                type="button"
+                onClick={() => setRadius(preset.meters)}
+                aria-pressed={radius === preset.meters}
+                className={cn(
+                  'rounded-xs border px-2 py-1 text-[11px] font-medium transition-colors',
+                  radius === preset.meters
+                    ? 'border-accent bg-accent-soft text-accent-dark'
+                    : 'border-line-strong bg-surface text-muted hover:bg-ground',
+                )}
+              >
+                {preset.label} <span className="tnum">{preset.meters} m</span>
+              </button>
+            ))}
           </div>
-        </CardBody>
+        </div>
+      </BentoTile>
 
-        <CardFooter className="flex flex-wrap items-center justify-between gap-3">
+      <BentoTile rank="rail">
+        <div className="flex flex-wrap items-center justify-between gap-3 p-4">
+          <label className="flex cursor-pointer items-start gap-2">
+            <input
+              type="checkbox"
+              checked={verified}
+              onChange={(event) => setVerified(event.target.checked)}
+              className="mt-0.5 h-3.5 w-3.5 accent-[var(--color-accent)]"
+            />
+            <span className="text-[11.5px] text-muted">
+              <span className="font-semibold text-ink">I have checked the pin</span> — it sits on the
+              correct building on the map.
+            </span>
+          </label>
+
           <div className="min-w-0">
             {formError ? (
               <p className="text-[11.5px] font-medium text-rejected">{formError}</p>
@@ -293,8 +312,8 @@ export function GeofenceForm({
               {existing ? 'Save changes' : 'Save geofence'}
             </Button>
           </div>
-        </CardFooter>
-      </Card>
+        </div>
+      </BentoTile>
     </form>
   );
 }

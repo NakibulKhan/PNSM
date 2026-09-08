@@ -8,5 +8,6 @@ export interface LivePresence {
   office_name: string;
   timestamp: string;
   face_match_score: number;
-  gps_location: GeoJSONPoint;
+  /** `null` on a decrypt failure — see AttendanceLog.gps_location's doc comment in models.ts. */
+  gps_location: GeoJSONPoint | null;
 }

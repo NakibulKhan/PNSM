@@ -25,6 +25,7 @@ EXPECTED_ROUTES = {
     ("GET", "/metrics"),
     ("POST", "/v1/embed"),
     ("POST", "/v1/verify"),
+    ("POST", "/v1/liveness/challenge"),
     ("POST", "/v1/security/pin/hash"),
     ("POST", "/v1/security/pin/verify"),
     ("POST", "/v1/storage/presign-put"),

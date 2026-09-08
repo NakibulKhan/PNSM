@@ -27,6 +27,21 @@ const gpsSchema = z.object({
 });
 
 /**
+ * Item 3 (Flawless/Ultra blueprint): active-illumination liveness challenge
+ * frames — 2-4 captures, one per screen-flash color the client displayed.
+ * Not ISO/IEC 30107-3 certified; a real, own-built PAD signal verified
+ * server-side by Person 4's AI service (POST /v1/liveness/challenge), never
+ * trusted from a client-supplied pass/fail boolean.
+ */
+const livenessFrameSchema = z.object({
+  color: z.enum(['red', 'green', 'blue', 'white']),
+  image: z.object({
+    kind: z.literal('base64'),
+    value: z.string().min(1),
+  }),
+});
+
+/**
  * DECISIONS.md N2/N5 — no selfie bytes here, only the object_key from an
  * already-completed presigned upload. `request_id` is optional because
  * Person 1's client does not generate one yet (DECISIONS.md N5 follow-up);
@@ -39,7 +54,16 @@ export const mobileCheckinSchema = z.object({
   gps: gpsSchema,
   geofence_id: z.string().min(1, 'geofence_id is required.'),
   pin: z.string().regex(/^\d{4}$/, 'PIN must be exactly 4 digits.'),
-  liveness_passed: z.boolean(),
+  // Deliberately NOT `.min(2)`: an empty/short array is a legitimate
+  // real-world submission (camera permission denied, getUserMedia
+  // unavailable on the WebView) that the client forwards as captured rather
+  // than pre-empting locally (see __tests__/checkinFlow.test.js's own
+  // "rather than deciding pass/fail locally" test on the mobile side). A
+  // generic 422 here would be indistinguishable from a malformed request;
+  // attendanceService.ts's performCheckin() checks the count explicitly and
+  // fails closed with the specific `liveness_failed` business reason
+  // instead, matching how every other liveness/PAD rejection surfaces.
+  liveness_frames: z.array(livenessFrameSchema).max(4),
   object_key: z.string().min(1, 'object_key is required — upload the selfie first.'),
   device: deviceSchema,
   request_id: z.string().min(10).optional(),

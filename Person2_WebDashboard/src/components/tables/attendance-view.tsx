@@ -7,18 +7,21 @@
  * 18:00Z the previous day). `dhakaDayStartUtc` / `dhakaDayEndUtc` do that
  * conversion, and nothing here constructs a boundary by hand.
  */
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useTransition } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Download, FileText, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
 import { Field, Input, Select } from '@/components/ui/input';
 import { ConfidenceLegend } from '@/components/ui/confidence-bar';
+import { BentoGrid } from '@/components/bento/BentoGrid';
+import { BentoTile, useTileHeading } from '@/components/bento/BentoTile';
+import { TileHeader } from '@/components/bento/TileHeader';
 import { DataTable } from './data-table';
 import { attendanceColumns } from './columns';
 import { useToast } from '@/components/ui/toast';
 import { useSession } from '@/auth/auth-context';
 import { api, fetchData } from '@/api/client';
+import { fetchAllAttendance } from '@/lib/fetch-all-attendance';
 import { queryKeys } from '@/lib/query-keys';
 import { dhakaDayEndUtc, dhakaDayStartUtc, lastNDhakaDateKeys, todayDhakaKey } from '@/lib/tz';
 import { exportAttendanceCsv } from '@/lib/export-csv';
@@ -38,6 +41,12 @@ export function AttendanceView({ initialStatus = 'all' }: { initialStatus?: stri
   const [status, setStatus] = useState(initialStatus);
   const [page, setPage] = useState(1);
   const [exporting, setExporting] = useState(false);
+  // React 18 concurrent rendering (Item 10, Flawless/Ultra blueprint): every
+  // filter change here triggers a real network refetch + full-table
+  // re-render. Wrapping the state updates in a transition lets React keep
+  // the filter control itself (its pressed/focus state) responsive while
+  // that re-render is de-prioritized, rather than blocking on it.
+  const [isFilterPending, startFilterTransition] = useTransition();
 
   const { data: offices } = useQuery({
     queryKey: queryKeys.offices,
@@ -73,15 +82,13 @@ export function AttendanceView({ initialStatus = 'all' }: { initialStatus?: stri
     },
   });
 
-  /** Exports the whole filtered range, not just the page on screen. */
-  const fetchAllForExport = async (): Promise<AttendanceLog[]> => {
-    const response = await api.get<AttendanceLog[]>('attendance', {
-      ...query,
-      page: 1,
-      pageSize: 5_000,
-    });
-    return response.data;
-  };
+  /**
+   * Exports the whole filtered range, not just the page on screen — paginated
+   * at the server's own 200-row cap. This previously asked for 5000 in one
+   * request, which the backend rejects with a 422, so every CSV and PDF export
+   * from this screen failed. See lib/fetch-all-attendance.ts.
+   */
+  const fetchAllForExport = (): Promise<AttendanceLog[]> => fetchAllAttendance(query);
 
   const onExportCsv = async () => {
     setExporting(true);
@@ -116,17 +123,20 @@ export function AttendanceView({ initialStatus = 'all' }: { initialStatus?: stri
   };
 
   const resetFilters = () => {
-    setFrom(weekKeys[0]);
-    setTo(todayDhakaKey());
-    setOfficeId('');
-    setStatus('all');
-    setPage(1);
+    startFilterTransition(() => {
+      setFrom(weekKeys[0]);
+      setTo(todayDhakaKey());
+      setOfficeId('');
+      setStatus('all');
+      setPage(1);
+    });
   };
 
   return (
-    <>
-      <Card className="mb-4">
-        <div className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-[repeat(4,minmax(0,1fr))_auto]">
+    <BentoGrid>
+      <BentoTile rank="rail">
+        <RailHeading />
+        <div className="layout-grid grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-[repeat(4,minmax(0,1fr))_auto]">
           <Field label="From">
             <Input
               type="date"
@@ -134,8 +144,11 @@ export function AttendanceView({ initialStatus = 'all' }: { initialStatus?: stri
               max={to}
               numeric
               onChange={(event) => {
-                setFrom(event.target.value);
-                setPage(1);
+                const value = event.target.value;
+                startFilterTransition(() => {
+                  setFrom(value);
+                  setPage(1);
+                });
               }}
             />
           </Field>
@@ -147,8 +160,11 @@ export function AttendanceView({ initialStatus = 'all' }: { initialStatus?: stri
               min={from}
               numeric
               onChange={(event) => {
-                setTo(event.target.value);
-                setPage(1);
+                const value = event.target.value;
+                startFilterTransition(() => {
+                  setTo(value);
+                  setPage(1);
+                });
               }}
             />
           </Field>
@@ -157,8 +173,11 @@ export function AttendanceView({ initialStatus = 'all' }: { initialStatus?: stri
             <Select
               value={officeId}
               onChange={(event) => {
-                setOfficeId(event.target.value);
-                setPage(1);
+                const value = event.target.value;
+                startFilterTransition(() => {
+                  setOfficeId(value);
+                  setPage(1);
+                });
               }}
             >
               <option value="">All offices</option>
@@ -174,8 +193,11 @@ export function AttendanceView({ initialStatus = 'all' }: { initialStatus?: stri
             <Select
               value={status}
               onChange={(event) => {
-                setStatus(event.target.value);
-                setPage(1);
+                const value = event.target.value;
+                startFilterTransition(() => {
+                  setStatus(value);
+                  setPage(1);
+                });
               }}
             >
               <option value="all">All statuses</option>
@@ -192,7 +214,7 @@ export function AttendanceView({ initialStatus = 'all' }: { initialStatus?: stri
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-4 py-2.5">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-hairline px-4 py-2.5">
           <ConfidenceLegend />
           <div className="flex items-center gap-2">
             <Button variant="secondary" size="sm" loading={exporting} onClick={onExportCsv}>
@@ -203,20 +225,36 @@ export function AttendanceView({ initialStatus = 'all' }: { initialStatus?: stri
             </Button>
           </div>
         </div>
-      </Card>
+      </BentoTile>
 
-      <Card>
-        <DataTable
-          columns={attendanceColumns}
-          data={data?.rows ?? []}
-          meta={data?.meta}
-          isLoading={isPending}
-          getRowId={(row) => row._id}
-          onPageChange={setPage}
-          emptyTitle="No check-ins in this range"
-          emptyMessage="Widen the dates or clear the office and status filters."
+      <BentoTile rank="wide" span="bento-span-tall">
+        <TileHeader
+          title="Results"
+          support={data?.meta ? `${data.meta.total} matching this filter` : undefined}
         />
-      </Card>
-    </>
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <DataTable
+            columns={attendanceColumns}
+            data={data?.rows ?? []}
+            meta={data?.meta}
+            isLoading={isPending || isFilterPending}
+            getRowId={(row) => row._id}
+            onPageChange={(nextPage) => startFilterTransition(() => setPage(nextPage))}
+            emptyTitle="No check-ins in this range"
+            emptyMessage="Widen the dates or clear the office and status filters."
+          />
+        </div>
+      </BentoTile>
+    </BentoGrid>
+  );
+}
+
+/** A rail tile is just a filter bar, but every tile still needs its own accessible name (§10). */
+function RailHeading() {
+  const { id } = useTileHeading();
+  return (
+    <h3 id={id} className="sr-only">
+      Filter attendance logs
+    </h3>
   );
 }

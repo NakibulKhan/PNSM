@@ -7,19 +7,21 @@ import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Download, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardBody, CardFooter, CardHeader } from '@/components/ui/card';
 import { Field, Input, Select } from '@/components/ui/input';
-import { Stat } from '@/components/common/stat';
-import { Skeleton } from '@/components/ui/skeleton';
+import { BentoGrid } from '@/components/bento/BentoGrid';
+import { BentoTile, useTileHeading } from '@/components/bento/BentoTile';
+import { TileHeader } from '@/components/bento/TileHeader';
+import { StatTile } from '@/components/bento/StatTile';
 import { useToast } from '@/components/ui/toast';
 import { useSession } from '@/auth/auth-context';
-import { api, fetchData } from '@/api/client';
+import { fetchData } from '@/api/client';
+import { fetchAllAttendance } from '@/lib/fetch-all-attendance';
 import { queryKeys } from '@/lib/query-keys';
 import { dhakaDayEndUtc, dhakaDayStartUtc, lastNDhakaDateKeys, todayDhakaKey } from '@/lib/tz';
 import { exportAttendanceCsv } from '@/lib/export-csv';
 import { exportAttendancePdf } from '@/lib/export-pdf';
 import { FACE_MATCH_THRESHOLD } from '@/lib/constants';
-import type { AttendanceLog, Office } from '@/types/models';
+import type { Office } from '@/types/models';
 
 export function ReportsView() {
   const { toast } = useToast();
@@ -47,14 +49,9 @@ export function ReportsView() {
 
   const { data: rows, isPending } = useQuery({
     queryKey: ['reports', range, officeId],
-    queryFn: async () => {
-      const response = await api.get<AttendanceLog[]>('attendance', {
-        ...range,
-        officeId: officeId || undefined,
-        pageSize: 5_000,
-      });
-      return response.data;
-    },
+    // Paginated at the server's own 200-row cap. Asking for 5000 in one call
+    // used to 422 and left this entire screen blank — see fetch-all-attendance.ts.
+    queryFn: () => fetchAllAttendance({ ...range, officeId: officeId || undefined }),
   });
 
   const summary = useMemo(() => {
@@ -120,32 +117,29 @@ export function ReportsView() {
   };
 
   return (
-    <div className="space-y-4">
-      <Card>
-        <CardHeader
-          title="Build a report"
-          description="Payroll-ready attendance for a period and location. All dates are Asia/Dhaka calendar days."
-        />
-        <CardBody className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-3">
-            <Field label="From">
-              <Input type="date" value={from} max={to} numeric onChange={(event) => setFrom(event.target.value)} />
-            </Field>
-            <Field label="To">
-              <Input type="date" value={to} min={from} numeric onChange={(event) => setTo(event.target.value)} />
-            </Field>
-            <Field label="Office">
-              <Select value={officeId} onChange={(event) => setOfficeId(event.target.value)}>
-                <option value="">All offices</option>
-                {offices?.map((office) => (
-                  <option key={office._id} value={office._id}>
-                    {office.office_name}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-          </div>
+    <BentoGrid>
+      <BentoTile rank="rail">
+        <RailHeading />
+        <div className="grid gap-3 p-4 sm:grid-cols-3">
+          <Field label="From">
+            <Input type="date" value={from} max={to} numeric onChange={(event) => setFrom(event.target.value)} />
+          </Field>
+          <Field label="To">
+            <Input type="date" value={to} min={from} numeric onChange={(event) => setTo(event.target.value)} />
+          </Field>
+          <Field label="Office">
+            <Select value={officeId} onChange={(event) => setOfficeId(event.target.value)}>
+              <option value="">All offices</option>
+              {offices?.map((office) => (
+                <option key={office._id} value={office._id}>
+                  {office.office_name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        </div>
 
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-hairline px-4 py-2.5">
           <div className="flex flex-wrap items-center gap-2">
             <span className="eyebrow">Quick ranges</span>
             <Button variant="secondary" size="sm" onClick={() => setPreset(7)}>
@@ -155,12 +149,6 @@ export function ReportsView() {
               Last 30 days
             </Button>
           </div>
-        </CardBody>
-
-        <CardFooter className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-[11.5px] text-faint">
-            PDF marks any match below {FACE_MATCH_THRESHOLD}% so payroll sees the exceptions.
-          </p>
           <div className="flex items-center gap-2">
             <Button variant="secondary" loading={busy} onClick={() => runExport('csv')}>
               <Download size={14} aria-hidden /> Export CSV
@@ -169,50 +157,70 @@ export function ReportsView() {
               <FileText size={14} aria-hidden /> Export PDF
             </Button>
           </div>
-        </CardFooter>
-      </Card>
-
-      {isPending ? (
-        <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, index) => (
-            <Skeleton key={index} className="h-[92px]" />
-          ))}
         </div>
-      ) : (
-        <>
-          <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-            <Stat label="Records in period" value={summary.records} tone="accent" footnote={`${summary.checkIns} check-ins`} />
-            <Stat label="Employees covered" value={summary.uniqueEmployees} />
-            <Stat
-              label="Avg face match"
-              value={summary.avgMatch.toFixed(1)}
-              suffix="%"
-              tone={summary.avgMatch >= FACE_MATCH_THRESHOLD ? 'verified' : 'flagged'}
-            />
-            <Stat
-              label="Exceptions"
-              value={summary.flagged + summary.rejected}
-              tone={summary.flagged + summary.rejected > 0 ? 'flagged' : 'neutral'}
-              footnote={`${summary.flagged} flagged · ${summary.rejected} rejected`}
-            />
-          </div>
+        <p className="px-4 pb-3 text-[11.5px] text-faint">
+          PDF marks any match below {FACE_MATCH_THRESHOLD}% so payroll sees the exceptions.
+        </p>
+      </BentoTile>
 
-          <Card>
-            <CardBody>
-              <p className="eyebrow mb-2">What the export contains</p>
-              <ul className="grid gap-1 text-[12px] text-muted sm:grid-cols-2">
-                <li>Employee ID and name</li>
-                <li>Office and geofence validated against</li>
-                <li>Dhaka-local date and time of each event</li>
-                <li>Check-in or check-out</li>
-                <li>Face-match score to one decimal</li>
-                <li>Verification status and mock-location flag</li>
-                <li>GPS latitude and longitude (CSV only)</li>
-              </ul>
-            </CardBody>
-          </Card>
-        </>
-      )}
-    </div>
+      <StatTile
+        rank="chip"
+        state={isPending ? 'loading' : 'ready'}
+        label="Records in period"
+        value={summary.records}
+        tone="accent"
+        footnote={`${summary.checkIns} check-ins`}
+      />
+      <StatTile
+        rank="chip"
+        state={isPending ? 'loading' : 'ready'}
+        label="Employees covered"
+        value={summary.uniqueEmployees}
+      />
+      <StatTile
+        rank="chip"
+        state={isPending ? 'loading' : 'ready'}
+        label="Avg face match"
+        value={summary.avgMatch.toFixed(1)}
+        suffix="%"
+        tone={summary.avgMatch >= FACE_MATCH_THRESHOLD ? 'verified' : 'flagged'}
+      />
+      <StatTile
+        rank="chip"
+        state={isPending ? 'loading' : 'ready'}
+        label="Exceptions"
+        value={summary.flagged + summary.rejected}
+        tone={summary.flagged + summary.rejected > 0 ? 'flagged' : 'neutral'}
+        footnote={
+          <span className="flex gap-2">
+            <span>{summary.flagged} flagged</span>
+            <span>{summary.rejected} rejected</span>
+          </span>
+        }
+      />
+
+      <BentoTile rank="wide">
+        <TileHeader title="What the export contains" />
+        <ul className="grid gap-1 p-4 pt-2 text-[12px] text-muted sm:grid-cols-2">
+          <li>Employee ID and name</li>
+          <li>Office and geofence validated against</li>
+          <li>Dhaka-local date and time of each event</li>
+          <li>Check-in or check-out</li>
+          <li>Face-match score to one decimal</li>
+          <li>Verification status and mock-location flag</li>
+          <li>GPS latitude and longitude (CSV only)</li>
+        </ul>
+      </BentoTile>
+    </BentoGrid>
+  );
+}
+
+/** A rail tile is just a filter bar, but every tile still needs its own accessible name (§10). */
+function RailHeading() {
+  const { id } = useTileHeading();
+  return (
+    <h3 id={id} className="sr-only">
+      Build a report
+    </h3>
   );
 }

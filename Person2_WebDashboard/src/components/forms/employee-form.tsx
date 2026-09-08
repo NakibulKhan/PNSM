@@ -15,9 +15,11 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { UserPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardBody, CardFooter, CardHeader } from '@/components/ui/card';
 import { Field, Input, Select } from '@/components/ui/input';
 import { Slider } from '@/components/ui/slider';
+import { BentoGrid } from '@/components/bento/BentoGrid';
+import { BentoTile } from '@/components/bento/BentoTile';
+import { TileHeader } from '@/components/bento/TileHeader';
 import { PhotoUpload } from './photo-upload';
 import { useToast } from '@/components/ui/toast';
 import { api, fetchData } from '@/api/client';
@@ -154,14 +156,14 @@ export function EmployeeForm() {
   });
 
   return (
-    <form onSubmit={handleSubmit((values) => createEmployee.mutate(values))}>
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <Card>
-          <CardHeader
+    <form onSubmit={handleSubmit((values) => createEmployee.mutate(values))} className="contents">
+      <BentoGrid>
+        <BentoTile rank="wide" span="bento-span-tall">
+          <TileHeader
             title="Add new employee"
-            description="Creates the profile and generates the biometric baseline and 2FA PIN."
+            support="Creates the profile and generates the biometric baseline and 2FA PIN."
           />
-          <CardBody className="space-y-4">
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 pt-2">
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Full name" error={errors.name?.message} required>
                 <Input {...register('name')} placeholder="Rafiq Hasan" invalid={!!errors.name} />
@@ -255,9 +257,9 @@ export function EmployeeForm() {
                 </p>
               </div>
             </div>
-          </CardBody>
+          </div>
 
-          <CardFooter className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-hairline p-4">
             <p className="text-[11.5px] text-faint">
               A 2FA PIN is generated automatically and shown once after saving.
             </p>
@@ -270,65 +272,63 @@ export function EmployeeForm() {
                 Create profile
               </Button>
             </div>
-          </CardFooter>
-        </Card>
+          </div>
+        </BentoTile>
 
-        <div className="space-y-4">
-          <Card>
-            <CardBody>
-              <PhotoUpload
-                value={photoUrl || null}
-                error={errors.reference_photo_url?.message}
-                onChange={(url) =>
-                  setValue('reference_photo_url', url ?? '', { shouldValidate: true })
-                }
-              />
-            </CardBody>
-          </Card>
+        <BentoTile rank="square">
+          <div className="flex flex-1 flex-col p-4">
+            <PhotoUpload
+              value={photoUrl || null}
+              error={errors.reference_photo_url?.message}
+              onChange={(url) =>
+                setValue('reference_photo_url', url ?? '', { shouldValidate: true })
+              }
+            />
+          </div>
+        </BentoTile>
 
-          {issuedPin ? (
-            <Card className="border-verified/30 bg-verified-soft">
-              <CardBody>
-                <p className="eyebrow">2FA PIN issued</p>
-                <p className="tnum mt-1 text-[30px] font-semibold leading-none text-verified">
-                  {issuedPin}
-                </p>
-                <p className="mt-2 text-[11.5px] text-verified">
-                  Give this to the employee now. It is not shown again — reissue from their profile if
-                  it is lost.
-                </p>
-              </CardBody>
-            </Card>
-          ) : null}
+        {issuedPin ? (
+          <BentoTile rank="chip" className="border-verified/30 bg-verified-soft">
+            <div className="flex flex-1 flex-col p-4">
+              <p className="eyebrow">2FA PIN issued</p>
+              <p className="tnum mt-1 text-[30px] font-semibold leading-none text-verified">
+                {issuedPin}
+              </p>
+              <p className="mt-2 text-[11.5px] text-verified">
+                Give this to the employee now. It is not shown again — reissue from their profile if
+                it is lost.
+              </p>
+            </div>
+          </BentoTile>
+        ) : null}
 
-          {issuedPassword ? (
-            <Card className="border-verified/30 bg-verified-soft">
-              <CardBody>
-                <p className="eyebrow">Initial mobile app password</p>
-                <p className="tnum mt-1 text-[20px] font-semibold leading-none text-verified">
-                  {issuedPassword}
-                </p>
-                <p className="mt-2 text-[11.5px] text-verified">
-                  Needed to sign into the mobile app for the first time, separately from the PIN above.
-                  It is not shown again — the employee should change it after signing in.
-                </p>
-              </CardBody>
-            </Card>
-          ) : null}
+        {issuedPassword ? (
+          <BentoTile rank="chip" className="border-verified/30 bg-verified-soft">
+            <div className="flex flex-1 flex-col p-4">
+              <p className="eyebrow">Initial mobile app password</p>
+              <p className="tnum mt-1 text-[20px] font-semibold leading-none text-verified">
+                {issuedPassword}
+              </p>
+              <p className="mt-2 text-[11.5px] text-verified">
+                Needed to sign into the mobile app for the first time, separately from the PIN above.
+                It is not shown again — the employee should change it after signing in.
+              </p>
+            </div>
+          </BentoTile>
+        ) : null}
 
-          <Card>
-            <CardBody className="space-y-2">
-              <p className="eyebrow">What happens on save</p>
-              <ol className="space-y-1.5 text-[11.5px] text-muted">
-                <li>1. The photo is compressed and stored in S3.</li>
-                <li>2. The face embedding is generated for 1:1 matching.</li>
-                <li>3. A 2FA PIN is issued for mobile check-in.</li>
-                <li>4. The profile activates against the assigned geofence.</li>
-              </ol>
-            </CardBody>
-          </Card>
-        </div>
-      </div>
+        <BentoTile rank="square">
+          <TileHeader title="What happens on save" />
+          <div className="flex-1 p-4 pt-2">
+            <ol className="space-y-1.5 text-[11.5px] text-muted">
+              <li>1. The photo is compressed and stored in S3.</li>
+              <li>2. The face embedding is generated for 1:1 matching.</li>
+              <li>3. A 2FA PIN is issued for mobile check-in.</li>
+              <li>4. The profile activates against the assigned geofence.</li>
+            </ol>
+          </div>
+        </BentoTile>
+      </BentoGrid>
     </form>
   );
 }

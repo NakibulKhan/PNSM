@@ -128,6 +128,27 @@ export const PNSM_HMAC_SECRET = optional(
   'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
 );
 
+/**
+ * Distributed rate limiting (Item 1, Flawless/Ultra blueprint compliance).
+ * Not required outside test/dev boot — src/lib/redis.ts connects lazily, and
+ * src/middleware/rateLimiter.ts falls back to an in-memory limiter under
+ * IS_TEST so the suite never needs a real Redis server, the same pattern
+ * MONGODB_URI already establishes above.
+ */
+export const REDIS_URL = optional('REDIS_URL', 'redis://localhost:6379');
+
+/**
+ * AES-256-GCM field encryption for `AttendanceLog.gps_location` /
+ * `SpoofAlert.gps_location` (Item 9, Flawless/Ultra blueprint — the local
+ * equivalent of MongoDB Queryable Encryption, per the user's explicit
+ * choice). Same JSON-map-of-base64-keys convention as Person 4's
+ * PNSM_FLE_KEYS/PNSM_FLE_ACTIVE_KEY (docker-compose.yml), same static-key
+ * provider model — a distinct key namespace so rotating one never touches
+ * the other.
+ */
+export const PNSM_GEO_FLE_KEYS = optional('PNSM_GEO_FLE_KEYS', '{"k1":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="}');
+export const PNSM_GEO_FLE_ACTIVE_KEY = optional('PNSM_GEO_FLE_ACTIVE_KEY', 'k1');
+
 export const APP_TIMEZONE = 'Asia/Dhaka';
 
 export const BCRYPT_PIN_SALT_ROUNDS = optionalInt('BCRYPT_PIN_SALT_ROUNDS', 10);

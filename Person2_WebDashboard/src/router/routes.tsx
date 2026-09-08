@@ -39,6 +39,7 @@ const PolicyPage = lazy(() => import('@/pages/admin/policy'));
 const AuditPage = lazy(() => import('@/pages/admin/audit'));
 const BillingPage = lazy(() => import('@/pages/admin/billing'));
 const NotFoundPage = lazy(() => import('@/pages/not-found'));
+const BentoPreviewPage = lazy(() => import('@/pages/dev/bento-preview'));
 
 /** Each lazy page gets its own boundary so one slow chunk cannot blank the shell. */
 const page = (element: ReactNode) => <Suspense fallback={<RouteFallback />}>{element}</Suspense>;
@@ -51,6 +52,13 @@ export const router = createBrowserRouter([
         element: <RedirectIfAuthenticated />,
         children: [{ path: '/login', element: page(<LoginPage />) }],
       },
+
+      // Dev-only Bento primitive preview — new route, no existing path touched,
+      // unreachable in a production build (import.meta.env.DEV is inlined false
+      // and dead-code-eliminated by Rollup, so this entry never ships).
+      ...(import.meta.env.DEV
+        ? [{ path: '/dev/bento-preview', element: page(<BentoPreviewPage />) }]
+        : []),
       {
         element: <RequireAuth />,
         children: [

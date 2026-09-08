@@ -1,0 +1,179 @@
+/* ==========================================================================
+   Bento grid engine (PNSM_Bento_Frontend_Master_Prompt.md §5)
+
+   Reading order equals DOM order — never grid-auto-flow:dense, never `order`.
+   Compositions are built by markup order + span rank, not by reflow tricks.
+
+   Coexists with this app's pre-existing `.layout-grid`/`.kpi-grid`/`.split-grid`
+   classes (see index.css) — those keep working for every screen not yet
+   migrated to Bento; this is an ADDITIVE second grid system, not a replacement.
+   It carries its OWN Safari-16.3 @supports fallback (below), independent of
+   the color-mix()-keyed one already guarding the older classes, because a
+   `grid-template-columns` failure and a `color-mix()` failure are two
+   different WebKit gaps that happen to affect the same browser version.
+   ========================================================================== */
+
+.bento {
+  display: grid;
+  gap: var(--spacing-gap-sm);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-auto-rows: minmax(var(--bento-row), auto);
+}
+
+@media (min-width: 768px) {
+  .bento {
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+    gap: var(--spacing-gap-md);
+  }
+}
+
+@media (min-width: 1280px) {
+  .bento {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    gap: var(--spacing-gap-lg);
+  }
+}
+
+/* Tile rank → span, per breakpoint (master prompt §5.2). Mobile-first: the
+   base rule is the <768px span, then each breakpoint overrides upward. */
+.rank-hero  { grid-column: span 4; grid-row: span 3; }
+.rank-wide  { grid-column: span 4; grid-row: span 2; }
+.rank-tall  { grid-column: span 4; grid-row: span 3; }
+.rank-square{ grid-column: span 4; grid-row: span 2; }
+.rank-chip  { grid-column: span 2; grid-row: span 1; }
+.rank-rail  { grid-column: span 4; grid-row: span 1; }
+
+@media (min-width: 768px) {
+  .rank-hero  { grid-column: span 8; grid-row: span 3; }
+  .rank-wide  { grid-column: span 8; grid-row: span 2; }
+  .rank-tall  { grid-column: span 4; grid-row: span 4; }
+  .rank-square{ grid-column: span 4; grid-row: span 2; }
+  .rank-chip  { grid-column: span 4; grid-row: span 1; }
+  .rank-rail  { grid-column: span 8; grid-row: span 1; }
+}
+
+@media (min-width: 1280px) {
+  .rank-hero  { grid-column: span 6; grid-row: span 3; }
+  .rank-wide  { grid-column: span 8; grid-row: span 2; }
+  .rank-tall  { grid-column: span 4; grid-row: span 4; }
+  .rank-square{ grid-column: span 4; grid-row: span 2; }
+  .rank-chip  { grid-column: span 3; grid-row: span 1; }
+  .rank-rail  { grid-column: span 12; grid-row: span 1; }
+}
+
+/* Escape hatch (BentoTile's `span` prop): a few of the master prompt's own
+   screen wireframes need a `wide`-column tile with more than its default
+   2-row height — e.g. §6.2/§6.3's "wide 8×4" primary tables. Same column
+   span and elevation as `rank-wide`, taller row span only. */
+.bento-span-tall { grid-row: span 3; }
+@media (min-width: 768px) {
+  .bento-span-tall { grid-row: span 4; }
+}
+
+/* A tile spanning N `grid-auto-rows: minmax(row, auto)` tracks is NOT capped
+   at N*row by that alone — the "auto" lets the track grow to fit whatever
+   content it holds, so a tile with genuinely tall content (a feed with many
+   rows, a full data table) silently inflates the whole grid row instead of
+   scrolling inside its own reserved span. `min-height:0` on `.bento-tile`
+   (above) is necessary but not sufficient for a CSS Grid item; only an
+   explicit max-height actually forces `overflow-y-auto` to engage. Every
+   4-row-tall tile shares this content clamp, computed from the same
+   `--bento-row`/`--spacing-gap-*` tokens the grid itself uses. */
+.rank-tall,
+.bento-span-tall {
+  max-height: calc(3 * var(--bento-row) + 2 * var(--spacing-gap-sm));
+}
+@media (min-width: 768px) {
+  .rank-tall,
+  .bento-span-tall {
+    max-height: calc(4 * var(--bento-row) + 3 * var(--spacing-gap-md));
+  }
+}
+@media (min-width: 1280px) {
+  .rank-tall,
+  .bento-span-tall {
+    max-height: calc(4 * var(--bento-row) + 3 * var(--spacing-gap-lg));
+  }
+}
+
+/* Elevation by rank (master prompt §4.4) — method, not shadow intensity. */
+.bento-tile {
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-hairline);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  /* Grid items default to min-height:auto (content-based) — without this, a
+     tile with genuinely tall content (e.g. a full data table) inflates the
+     whole grid row track instead of scrolling inside its own reserved span,
+     since the grid's auto-sized rows (`grid-auto-rows: minmax(row, auto)`)
+     stretch to fit the tallest un-clamped item sharing that row. */
+  min-height: 0;
+}
+
+.rank-hero.bento-tile {
+  background-color: var(--color-surface-raised);
+  border-radius: var(--radius-hero);
+  box-shadow: inset 0 1px 0 0 color-mix(in oklab, white 6%, transparent);
+}
+.rank-wide.bento-tile,
+.rank-tall.bento-tile {
+  border-radius: var(--radius-major);
+}
+.rank-square.bento-tile,
+.rank-rail.bento-tile {
+  border-radius: var(--radius-minor);
+}
+.rank-chip.bento-tile {
+  border-radius: var(--radius-chip);
+  border-color: transparent;
+}
+
+/* Touch targets never shrink below 44px, even at the smallest chip span. */
+.rank-chip.bento-tile,
+.rank-rail.bento-tile {
+  min-height: 44px;
+}
+
+.bento-tile [data-interactive] {
+  touch-action: manipulation;
+}
+
+/* ==========================================================================
+   SAFARI 16.3 FALLBACK — grid-template-columns / subgrid feature test
+
+   Feature-query first, grid second (master prompt §5.3). An engine that
+   cannot resolve `subgrid` gets flexbox compartments instead of a collapsed
+   layout. Every tile therefore carries BOTH a rank-* class (read by this
+   block) and its grid span rules above (ignored here) — never rely on one
+   without the other.
+   ========================================================================== */
+@supports not (grid-template-columns: subgrid) {
+  .bento {
+    display: flex;
+    flex-wrap: wrap;
+  }
+  .bento > * {
+    flex: 1 1 100%;
+  }
+  @media (min-width: 768px) {
+    .bento > .rank-chip {
+      flex: 1 1 calc(25% - var(--spacing-gap-md));
+    }
+    .bento > .rank-square {
+      flex: 1 1 calc(50% - var(--spacing-gap-md));
+    }
+    .bento > .rank-hero,
+    .bento > .rank-wide,
+    .bento > .rank-tall,
+    .bento > .rank-rail {
+      flex: 1 1 100%;
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bento-tile {
+    transition-duration: 0.001ms !important;
+  }
+}

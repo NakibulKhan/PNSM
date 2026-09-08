@@ -13,3 +13,4 @@ export { SpoofAlert } from './SpoofAlert';
 export { Policy, getSingletonPolicy } from './Policy';
 export { Billing, getSingletonBilling } from './Billing';
 export { Heartbeat } from './Heartbeat';
+export { IncidentBlocklist } from './IncidentBlocklist';

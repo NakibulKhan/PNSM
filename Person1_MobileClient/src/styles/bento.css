@@ -1,0 +1,96 @@
+/* ==========================================================================
+   Bento grid engine — mobile edge client (mobile-only, always 4 columns;
+   this app never renders at a desktop width, so there is no tablet/desktop
+   breakpoint to define, unlike Person2_WebDashboard's bento.css).
+
+   Reading order equals DOM order — never grid-auto-flow:dense, never `order`.
+   Coexists with this app's pre-existing `.pnsm-grid`/`.pnsm-keypad` classes
+   (see styles/index.css) — those keep working for the PIN keypad, which is
+   not part of this Bento pass; independent Safari-16.3 `@supports` guards
+   below, same reasoning as the web dashboard's two separate fallback blocks.
+   ========================================================================== */
+
+.bento {
+  display: grid;
+  gap: var(--spacing-gap-sm);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-auto-rows: minmax(var(--bento-row), auto);
+}
+
+.rank-hero  { grid-column: span 4; grid-row: span 3; }
+.rank-wide  { grid-column: span 4; grid-row: span 2; }
+.rank-tall  { grid-column: span 4; grid-row: span 3; }
+.rank-square{ grid-column: span 4; grid-row: span 2; }
+.rank-chip  { grid-column: span 2; grid-row: span 1; }
+.rank-rail  { grid-column: span 4; grid-row: span 1; }
+
+.bento-tile {
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-hairline);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.rank-hero.bento-tile {
+  background-color: var(--color-surface-raised);
+  border-radius: var(--radius-hero);
+}
+.rank-wide.bento-tile,
+.rank-tall.bento-tile {
+  border-radius: var(--radius-major);
+}
+.rank-square.bento-tile,
+.rank-rail.bento-tile {
+  border-radius: var(--radius-minor);
+}
+.rank-chip.bento-tile {
+  border-radius: var(--radius-chip);
+  border-color: transparent;
+}
+
+.rank-chip.bento-tile,
+.rank-rail.bento-tile {
+  min-height: 44px;
+}
+
+.bento-tile [data-interactive] {
+  touch-action: manipulation;
+}
+
+/* Same content-blowout fix as the web dashboard's bento.css (real bug found
+   there, N43/N44) — a tile spanning `minmax(row, auto)` tracks isn't capped
+   at N*row by `min-height:0` alone; only an explicit max-height forces
+   `overflow-y-auto` to actually engage. Deliberately `rank-tall` ONLY, not
+   `rank-hero` too — unlike the web dashboard's compact hero tiles (a KPI
+   number, an identity card), this app's hero tiles can legitimately hold an
+   entire screen's primary content (CheckInScreen's whole check-in flow), and
+   clamping one collapsed it via flexbox shrink instead of scrolling — caught
+   live in the Browser pane (a 224px circular camera target rendered at 11px
+   tall), not assumed safe from the CSS alone. */
+.rank-tall {
+  max-height: calc(3 * var(--bento-row) + 2 * var(--spacing-gap-sm));
+}
+
+/* ==========================================================================
+   SAFARI 16.3 FALLBACK — grid-template-columns / subgrid feature test.
+   Mobile-only, so the fallback is simpler than the web dashboard's: every
+   rank just stacks full-width, since there is no wider column count to
+   partially preserve.
+   ========================================================================== */
+@supports not (grid-template-columns: subgrid) {
+  .bento {
+    display: flex;
+    flex-direction: column;
+  }
+  .bento > * {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bento-tile {
+    transition-duration: 0.001ms !important;
+  }
+}

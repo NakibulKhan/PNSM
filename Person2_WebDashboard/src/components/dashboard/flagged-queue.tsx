@@ -14,10 +14,12 @@ import { Check, X, MapPin, Clock } from 'lucide-react';
 import { Avatar } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardBody } from '@/components/ui/card';
 import { ConfidenceBar } from '@/components/ui/confidence-bar';
-import { EmptyState } from '@/components/common/states';
-import { SkeletonRows } from '@/components/ui/skeleton';
+import { BentoGrid } from '@/components/bento/BentoGrid';
+import { BentoTile } from '@/components/bento/BentoTile';
+import { TileHeader } from '@/components/bento/TileHeader';
+import { TileEmpty } from '@/components/bento/TileEmpty';
+import { TileSkeleton } from '@/components/bento/TileSkeleton';
 import { useToast } from '@/components/ui/toast';
 import { api, fetchData } from '@/api/client';
 import { queryKeys } from '@/lib/query-keys';
@@ -73,80 +75,88 @@ export function FlaggedQueue() {
     },
   });
 
-  if (isPending) return <SkeletonRows rows={4} />;
-
-  if (!data || data.length === 0) {
-    return (
-      <Card>
-        <EmptyState
-          title="Nothing waiting for review"
-          message={`Check-ins scoring below ${FACE_MATCH_THRESHOLD}% arrive here for a manual decision.`}
-        />
-      </Card>
-    );
-  }
+  const state = isPending ? 'loading' : !data || data.length === 0 ? 'empty' : 'ready';
 
   return (
-    <div className="space-y-3">
-      {data.map((log) => {
-        const { lat, lng } = pointToLatLng(log.gps_location);
-        const shortfall = FACE_MATCH_THRESHOLD - log.face_match_score;
-        const busy = decide.isPending && decide.variables?.id === log._id;
+    <BentoGrid>
+      <BentoTile rank="wide" span="bento-span-tall">
+        <TileHeader
+          title="Review queue"
+          support={data ? `${data.length} awaiting a decision` : undefined}
+        />
+        <div className="min-h-0 flex-1 overflow-y-auto p-3">
+          {state === 'loading' ? (
+            <TileSkeleton />
+          ) : state === 'empty' ? (
+            <TileEmpty
+              title="Nothing waiting for review"
+              message={`Check-ins scoring below ${FACE_MATCH_THRESHOLD}% arrive here for a manual decision.`}
+            />
+          ) : (
+            <div className="space-y-3">
+              {data!.map((log) => {
+                const point = pointToLatLng(log.gps_location);
+                const shortfall = FACE_MATCH_THRESHOLD - log.face_match_score;
+                const busy = decide.isPending && decide.variables?.id === log._id;
 
-        return (
-          <Card key={log._id}>
-            <CardBody className="flex flex-col gap-4 sm:flex-row sm:items-center">
-              <Avatar name={log.employee_name ?? '—'} src={log.selfie_url} size={52} />
+                return (
+                  <div key={log._id} className="card flex flex-col gap-4 p-4 sm:flex-row sm:items-center">
+                    <Avatar name={log.employee_name ?? '—'} src={log.selfie_url} size={52} />
 
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="text-[14px] font-semibold text-ink">{log.employee_name}</p>
-                  <span className="tnum text-[11.5px] text-faint">{log.employee_code}</span>
-                  {log.mock_location_detected ? <Badge tone="rejected">Spoofed GPS</Badge> : null}
-                </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-[14px] font-semibold text-ink">{log.employee_name}</p>
+                        <span className="tnum text-[11.5px] text-faint">{log.employee_code}</span>
+                        {log.mock_location_detected ? <Badge tone="rejected">Spoofed GPS</Badge> : null}
+                      </div>
 
-                <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11.5px] text-muted">
-                  <span className="flex items-center gap-1">
-                    <Clock size={12} aria-hidden />
-                    <span className="tnum">{formatDateTime(log.timestamp)}</span>
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <MapPin size={12} aria-hidden />
-                    {log.office_name}
-                  </span>
-                  <span className="tnum text-faint">{formatLatLng(lat, lng)}</span>
-                </div>
+                      <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11.5px] text-muted">
+                        <span className="flex items-center gap-1">
+                          <Clock size={12} aria-hidden />
+                          <span className="tnum">{formatDateTime(log.timestamp)}</span>
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <MapPin size={12} aria-hidden />
+                          {log.office_name}
+                        </span>
+                        <span className="tnum text-faint">
+                          {point ? formatLatLng(point.lat, point.lng) : 'Location unavailable'}
+                        </span>
+                      </div>
 
-                <div className="mt-2.5 flex flex-wrap items-center gap-3">
-                  <ConfidenceBar score={log.face_match_score} width="w-32" />
-                  <span className="tnum text-[11.5px] text-flagged">
-                    {shortfall.toFixed(1)} points below the {FACE_MATCH_THRESHOLD}% threshold
-                  </span>
-                </div>
-              </div>
+                      <div className="mt-2.5 flex flex-wrap items-center gap-3">
+                        <ConfidenceBar score={log.face_match_score} width="w-32" />
+                        <span className="tnum text-[11.5px] text-flagged">
+                          {shortfall.toFixed(1)} points below the {FACE_MATCH_THRESHOLD}% threshold
+                        </span>
+                      </div>
+                    </div>
 
-              <div className="flex shrink-0 items-center gap-2">
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  loading={busy && decide.variables?.decision === 'reject'}
-                  onClick={() => decide.mutate({ id: log._id, decision: 'reject' })}
-                >
-                  <X size={13} aria-hidden /> Reject
-                </Button>
-                <Button
-                  variant="success"
-                  size="sm"
-                  loading={busy && decide.variables?.decision === 'approve'}
-                  onClick={() => decide.mutate({ id: log._id, decision: 'approve' })}
-                >
-                  <Check size={13} aria-hidden /> Approve
-                </Button>
-              </div>
-            </CardBody>
-          </Card>
-        );
-      })}
-    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        loading={busy && decide.variables?.decision === 'reject'}
+                        onClick={() => decide.mutate({ id: log._id, decision: 'reject' })}
+                      >
+                        <X size={13} aria-hidden /> Reject
+                      </Button>
+                      <Button
+                        variant="success"
+                        size="sm"
+                        loading={busy && decide.variables?.decision === 'approve'}
+                        onClick={() => decide.mutate({ id: log._id, decision: 'approve' })}
+                      >
+                        <Check size={13} aria-hidden /> Approve
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </BentoTile>
+    </BentoGrid>
   );
 }

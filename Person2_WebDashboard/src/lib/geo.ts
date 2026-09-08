@@ -59,8 +59,23 @@ export function pointToLatLngTuple(point: GeoJSONPoint): LatLngTuple {
   return [point.coordinates[1], point.coordinates[0]];
 }
 
-/** Read a GeoJSON Point into named fields — the safest way to display values. */
-export function pointToLatLng(point: GeoJSONPoint): { lat: number; lng: number } {
+/**
+ * Read a GeoJSON Point into named fields — the safest way to display values.
+ *
+ * Accepts `null`/`undefined` because `AttendanceLog`/`SpoofAlert.gps_location`
+ * (Person3_BackendAPI, Item 9's AES-256-GCM field encryption) is decrypted
+ * server-side per-request and can legitimately come back `null` on the one
+ * failure path Person 3's own `openGeoPoint()` documents: "never throws — a
+ * decrypt failure surfaces as null, logged." A stale/rotated key or a
+ * corrupted envelope must degrade to "location unavailable" in this UI, not
+ * throw and take an unrelated table/map/export down with it. `Geofence.
+ * location` (never encrypted) is never null in practice, but every caller
+ * across an API boundary should handle the documented possibility anyway.
+ */
+export function pointToLatLng(point: GeoJSONPoint): { lat: number; lng: number };
+export function pointToLatLng(point: GeoJSONPoint | null | undefined): { lat: number; lng: number } | null;
+export function pointToLatLng(point: GeoJSONPoint | null | undefined): { lat: number; lng: number } | null {
+  if (!point) return null;
   return { lat: point.coordinates[1], lng: point.coordinates[0] };
 }
 

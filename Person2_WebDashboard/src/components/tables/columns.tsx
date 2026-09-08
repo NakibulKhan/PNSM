@@ -61,10 +61,13 @@ export const attendanceColumns: ColumnDef<AttendanceLog, unknown>[] = [
     id: 'location',
     header: 'GPS',
     cell: ({ row }) => {
-      const { lat, lng } = pointToLatLng(row.original.gps_location);
+      const point = pointToLatLng(row.original.gps_location);
+      if (!point) {
+        return <span className="text-[11px] text-faint">Unavailable</span>;
+      }
       return (
-        <span className="tnum text-[11px] text-faint" title={formatLatLng(lat, lng)}>
-          {lat.toFixed(4)}, {lng.toFixed(4)}
+        <span className="tnum text-[11px] text-faint" title={formatLatLng(point.lat, point.lng)}>
+          {point.lat.toFixed(4)}, {point.lng.toFixed(4)}
         </span>
       );
     },
