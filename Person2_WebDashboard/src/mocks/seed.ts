@@ -166,7 +166,11 @@ export const shifts: Shift[] = employees.map((employee, index) => ({
   user_id: employee._id,
   start_time: index % 5 === 0 ? '10:00' : '09:00',
   end_time: index % 5 === 0 ? '19:00' : '18:00',
-  days_of_week: 'Sun-Thu',
+  // 0=Sun..6=Sat (ADR-3), matching the real Shift model; days_of_week_label
+  // is the server-derived display string. Both used to be a single string
+  // field here, which is what M3's fix in types/models.ts caught.
+  days_of_week: [0, 1, 2, 3, 4],
+  days_of_week_label: 'Sun-Thu',
 }));
 
 // ------------------------------------------------------------- attendance ---

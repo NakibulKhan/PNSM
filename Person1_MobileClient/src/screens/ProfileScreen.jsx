@@ -5,8 +5,30 @@ import { logoutMobile } from "../lib/api";
 import { stopTelemetry, getTelemetryCapability } from "../lib/backgroundTelemetry";
 import BatteryOptimizationNotice from "../components/BatteryOptimizationNotice";
 import BentoGrid from "../components/bento/BentoGrid";
-import BentoTile from "../components/bento/BentoTile";
+import BentoTile, { useTileHeading } from "../components/bento/BentoTile";
 import TileHeader from "../components/bento/TileHeader";
+
+/**
+ * The identity card is the one tile on this screen with no `TileHeader` —
+ * the employee's own name IS its heading, so it reads `id`/`level` directly
+ * from context and renders itself as that heading rather than duplicating a
+ * title above it. Found missing entirely while writing this screen's first
+ * render test (M5, master audit): every other `BentoTile` on this screen
+ * renders a real heading at the id its `aria-labelledby` points to; this one
+ * didn't, leaving the section's accessible name pointing at nothing.
+ */
+function IdentityCard({ employee }) {
+  const { id, level: Level } = useTileHeading();
+  return (
+    <div className="flex flex-1 flex-col p-4">
+      <Level id={id} className="font-semibold text-ink">
+        {employee.fullName}
+      </Level>
+      <p className="font-mono text-xs text-ink-muted">{employee.employeeCode}</p>
+      {employee.department && <p className="mt-1 text-xs text-ink-muted">{employee.department}</p>}
+    </div>
+  );
+}
 
 export default function ProfileScreen() {
   const { state, dispatch } = useApp();
@@ -27,13 +49,7 @@ export default function ProfileScreen() {
 
       <BentoGrid>
         <BentoTile rank="square">
-          <div className="flex flex-1 flex-col p-4">
-            <p className="font-semibold text-ink">{state.employee.fullName}</p>
-            <p className="font-mono text-xs text-ink-muted">{state.employee.employeeCode}</p>
-            {state.employee.department && (
-              <p className="mt-1 text-xs text-ink-muted">{state.employee.department}</p>
-            )}
-          </div>
+          <IdentityCard employee={state.employee} />
         </BentoTile>
 
         {/* Assigned by HR — an employee no longer picks their own office here,

@@ -39,6 +39,11 @@
   --color-line:           var(--color-hairline); /* existing name, same role */
   --color-line-strong:    oklch(0.44 0.026 245);
   --color-ink:            oklch(0.96 0.006 245);
+  /* L6 (master audit): the one unused rung in this text-color scale (ink →
+     ink-soft → ink-muted → ink-faint) — ink-muted/ink-faint are used
+     throughout, ink-soft isn't yet. Kept as scale infrastructure rather than
+     pruned; deleting it would leave a gap the next "one step softer than
+     full-contrast text" need would just re-invent. */
   --color-ink-soft:       oklch(0.88 0.012 245);
   --color-ink-muted:      oklch(0.72 0.016 245);
   --color-muted:          var(--color-ink-muted); /* existing name, same role */
@@ -55,6 +60,12 @@
   --color-verified-soft: oklch(0.30 0.060 165);
   --color-flagged:       oklch(0.83 0.145 85);
   --color-flagged-soft:  oklch(0.32 0.060 85);
+  /* L6 (master audit): --color-pending and --color-geo have no current
+     consumer — checked, not stale: both are master-prompt-vocabulary aliases
+     (the same pattern --color-anomaly already uses), kept for spec compliance
+     even before any component reaches for them by name. badge.tsx's own
+     'pending' → 'flagged' tone mapping is what actually renders pending
+     status today, independent of this token existing. */
   --color-pending:       var(--color-flagged); /* master-prompt name, same signal */
   --color-rejected:      oklch(0.66 0.205 25);
   --color-rejected-soft: oklch(0.32 0.080 25);

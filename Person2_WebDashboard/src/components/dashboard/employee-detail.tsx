@@ -11,14 +11,14 @@ import { Button } from '@/components/ui/button';
 import { ConfidenceBar } from '@/components/ui/confidence-bar';
 import { TableShell, Td, Th, Tr } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
-import { EmptyState, ErrorState } from '@/components/common/states';
+import { EmptyState, ErrorState, WakingState } from '@/components/common/states';
 import { PhotoUpload } from '@/components/forms/photo-upload';
 import { RbacGate } from '@/components/common/rbac-gate';
 import { useToast } from '@/components/ui/toast';
 import { BentoGrid } from '@/components/bento/BentoGrid';
 import { BentoTile } from '@/components/bento/BentoTile';
 import { TileHeader } from '@/components/bento/TileHeader';
-import { api, fetchData } from '@/api/client';
+import { api, fetchData, isBackendWaking } from '@/api/client';
 import { queryKeys } from '@/lib/query-keys';
 import { formatDate, formatTime } from '@/lib/tz';
 import { checkTypeLabel } from '@/lib/format';
@@ -35,7 +35,7 @@ export function EmployeeDetailView({ employeeId }: { employeeId: string }) {
   const { toast } = useToast();
   const [replacing, setReplacing] = useState(false);
 
-  const { data, isPending, isError } = useQuery({
+  const { data, error, isPending, isError } = useQuery({
     queryKey: queryKeys.employee(employeeId),
     queryFn: () => fetchData<EmployeeDetail>(`employees/${employeeId}`),
   });
@@ -79,7 +79,11 @@ export function EmployeeDetailView({ employeeId }: { employeeId: string }) {
   if (isError || !data) {
     return (
       <div className="card">
-        <ErrorState message="That employee record could not be loaded. It may have been removed." />
+        {isBackendWaking(error) ? (
+          <WakingState />
+        ) : (
+          <ErrorState message="That employee record could not be loaded. It may have been removed." />
+        )}
       </div>
     );
   }
@@ -118,7 +122,13 @@ export function EmployeeDetailView({ employeeId }: { employeeId: string }) {
               ['Mobile', data.phone],
               [
                 'Shift',
-                data.shift ? `${data.shift.start_time} – ${data.shift.end_time} (${data.shift.days_of_week})` : '—',
+                // days_of_week is the number[] source of truth (0=Sun..6=Sat);
+                // days_of_week_label is the server-derived display string
+                // ("Sun-Thu"). Rendering days_of_week directly used to print
+                // "(0,1,2,3,4)" — see M3.
+                data.shift
+                  ? `${data.shift.start_time} – ${data.shift.end_time} (${data.shift.days_of_week_label})`
+                  : '—',
               ],
               ['Onboarded', formatDate(data.created_at)],
               ['Embedding model', data.face_embedding_meta?.model_version ?? '—'],

@@ -5,9 +5,10 @@ import { TileSkeleton } from './TileSkeleton';
 import { TileError } from './TileError';
 
 /**
- * A tile that hosts a MapLibre GL instance — never fetches data itself. Not
- * used by this phase's Dashboard screen (stubbed for the Geofence Studio /
- * Live Map phases, which own the actual WebGL-context lifecycle concerns).
+ * A tile that hosts a MapLibre GL instance — never fetches data itself, and
+ * owns none of the actual WebGL-context lifecycle (that's the caller's job).
+ * Used by the Live Map screen (`live-presence.tsx`); Geofence Studio's map
+ * (`geofence-map.tsx`) predates this primitive and rolls its own tile markup.
  */
 export function MapTile({
   rank,

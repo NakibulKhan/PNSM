@@ -21,6 +21,17 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * True for the one error shape `WakingState` (components/common/states.tsx)
+ * exists to explain: a cold Render/Koyeb free-tier backend timing out on its
+ * first request, not a real failure. Centralised here so every call site
+ * checks the same thing the same way, rather than re-testing `error.code`
+ * inline and risking drift from the string `toApiError` actually produces.
+ */
+export function isBackendWaking(error: unknown): boolean {
+  return error instanceof ApiError && error.code === 'BACKEND_TIMEOUT';
+}
+
 export type QueryParams = Record<string, string | number | boolean | undefined | null>;
 
 /** Strip empty values so the query string stays clean and cache keys stay stable. */

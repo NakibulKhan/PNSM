@@ -33,7 +33,8 @@ export function LivePresenceView() {
   });
 
   const byOffice = (presence ?? []).reduce<Record<string, number>>((accumulator, entry) => {
-    accumulator[entry.office_name] = (accumulator[entry.office_name] ?? 0) + 1;
+    const office = entry.office_name ?? 'Unknown office';
+    accumulator[office] = (accumulator[office] ?? 0) + 1;
     return accumulator;
   }, {});
 
@@ -88,7 +89,7 @@ export function LivePresenceView() {
                   key={entry.user_id}
                   className="flex items-center gap-2.5 border-b border-hairline px-4 py-2.5 last:border-b-0"
                 >
-                  <Avatar name={entry.employee_name} size={28} />
+                  <Avatar name={entry.employee_name ?? 'Unknown'} size={28} />
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-[12.5px] font-semibold text-ink">
                       {entry.employee_name}

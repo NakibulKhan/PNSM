@@ -27,14 +27,6 @@ function initials(name) {
     .join("");
 }
 
-function fmt(d) {
-  let h = d.getHours();
-  const m = d.getMinutes();
-  const ap = h >= 12 ? "PM" : "AM";
-  h = h % 12 || 12;
-  return `${h}:${String(m).padStart(2, "0")} ${ap}`;
-}
-
 /**
  * Maps GET /api/mobile/me's response shape onto this app's flatter,
  * component-friendly shape. `office` merges the profile's separate
@@ -138,5 +130,3 @@ export function useApp() {
   if (!ctx) throw new Error("useApp must be used inside AppProvider");
   return ctx;
 }
-
-export { fmt };

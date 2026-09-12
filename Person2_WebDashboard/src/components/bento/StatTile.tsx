@@ -15,11 +15,11 @@ const RULE: Record<Tone, string> = {
 };
 
 /**
- * A single-metric Bento chip/hero tile. Reuses `Stat`'s existing visual
- * language (tone accent rule, eyebrow label, tabular value, footnote) — see
- * `src/components/common/stat.tsx` — rather than nesting a second `.card`
- * inside `.bento-tile`. The eyebrow label doubles as the tile's own
- * accessible heading (§10: every tile is a `<section aria-labelledby>`); it
+ * A single-metric Bento chip/hero tile. Reuses the pre-Bento `Stat` component's
+ * visual language (tone accent rule, eyebrow label, tabular value, footnote —
+ * that component was deleted once every call site migrated here) rather than
+ * nesting a second `.card` inside `.bento-tile`. The eyebrow label doubles as
+ * the tile's own accessible heading (§10: every tile is a `<section aria-labelledby>`); it
  * is the tile's name, not decoration floating above a separate heading, so
  * it is kept rather than dropped for the master prompt's generic-eyebrow ban
  * (see the Bento plan's judgment call #2).
@@ -33,6 +33,9 @@ export function StatTile({
   tone = 'neutral',
   footnote,
   className,
+  errorTitle,
+  errorMessage,
+  errorWaking = false,
 }: {
   rank?: TileRank;
   state?: TileState;
@@ -42,13 +45,17 @@ export function StatTile({
   tone?: Tone;
   footnote?: ReactNode;
   className?: string;
+  /** Same override pattern FeedTile's emptyTitle/emptyMessage already uses — e.g. for a waking backend (isBackendWaking). */
+  errorTitle?: string;
+  errorMessage?: string;
+  errorWaking?: boolean;
 }) {
   return (
     <BentoTile rank={rank} state={state} className={cn('relative overflow-hidden p-3.5', className)}>
       {state === 'loading' ? (
         <TileSkeleton />
       ) : state === 'error' ? (
-        <TileError />
+        <TileError title={errorTitle} message={errorMessage} waking={errorWaking} />
       ) : (
         <StatTileBody label={label} value={value} suffix={suffix} tone={tone} footnote={footnote} />
       )}
@@ -69,14 +76,17 @@ function StatTileBody({
   tone: Tone;
   footnote?: ReactNode;
 }) {
-  const { id } = useTileHeading();
+  // M1: this used to destructure only `id` and render a plain `<p>`, so no
+  // StatTile ever produced an actual heading element — the dashboard had no
+  // <h2> at all despite BentoTile's documented h2/h3 contract (§10).
+  const { id, level: Level } = useTileHeading();
 
   return (
     <>
       <span className={cn('absolute inset-x-0 top-0 h-[2px]', RULE[tone])} aria-hidden />
-      <p id={id} className="eyebrow">
+      <Level id={id} className="eyebrow">
         {label}
-      </p>
+      </Level>
       <p className="mt-1.5 flex items-baseline gap-1">
         <span className="tnum text-[26px] font-semibold leading-none text-ink">{value}</span>
         {suffix ? <span className="tnum text-[14px] font-semibold text-ink-muted">{suffix}</span> : null}

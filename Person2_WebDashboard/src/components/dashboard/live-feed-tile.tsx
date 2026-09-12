@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { Avatar } from '@/components/ui/avatar';
+import { SelfieAvatar } from '@/components/ui/selfie-avatar';
 import { ConfidenceBar, ConfidenceLegend } from '@/components/ui/confidence-bar';
 import { FeedTile } from '@/components/bento/FeedTile';
-import { fetchData } from '@/api/client';
+import { fetchData, isBackendWaking } from '@/api/client';
 import { queryKeys } from '@/lib/query-keys';
 import { formatTime } from '@/lib/tz';
 import { cn } from '@/lib/utils';
@@ -12,15 +12,16 @@ import type { AttendanceLog } from '@/types/models';
 
 /**
  * Live check-in feed, re-housed in a `FeedTile`. Query/dedup/animation logic
- * is unchanged from the pre-Bento `LiveFeed` component (same query key, same
- * `_id`-keyed dedup, same `feed-arrive` motion — the network contract and the
- * live-updates behaviour are untouched). Only the meta line's presentation
- * changed: the old `code · office · check out` middle-dot join is one of the
- * master prompt's explicitly banned patterns (§3); replaced with spaced
- * fields and a small tag, same information, no joiner glyph.
+ * is unchanged from the pre-Bento `LiveFeed` component (deleted once this
+ * absorbed it) — same query key, same `_id`-keyed dedup, same `feed-arrive`
+ * motion; the network contract and the live-updates behaviour are untouched.
+ * Only the meta line's presentation changed: the old `code · office · check
+ * out` middle-dot join is one of the master prompt's explicitly banned
+ * patterns (§3); replaced with spaced fields and a small tag, same
+ * information, no joiner glyph.
  */
 export function LiveFeedTile() {
-  const { data, isPending, isError } = useQuery({
+  const { data, error, isPending, isError } = useQuery({
     queryKey: queryKeys.feed,
     queryFn: () => fetchData<AttendanceLog[]>('attendance/feed', { limit: 15 }),
     staleTime: 5_000,
@@ -56,6 +57,13 @@ export function LiveFeedTile() {
       footer={<ConfidenceLegend />}
       emptyTitle="No check-ins yet"
       emptyMessage="The feed fills as employees check in from the mobile app."
+      {...(isBackendWaking(error)
+        ? {
+            errorTitle: 'Waking up',
+            errorMessage: 'The free-tier backend sleeps when idle. This fills in on its own shortly.',
+            errorWaking: true,
+          }
+        : {})}
       ariaLive
     >
       <ul>
@@ -67,7 +75,12 @@ export function LiveFeedTile() {
               fresh.has(log._id) && 'feed-arrive',
             )}
           >
-            <Avatar name={log.employee_name ?? 'Unknown'} src={log.selfie_url} size={30} />
+            <SelfieAvatar
+              logId={log._id}
+              selfieKey={log.selfie_url}
+              name={log.employee_name ?? 'Unknown'}
+              size={30}
+            />
 
             <div className="min-w-0 flex-1">
               <p className="truncate text-[13px] font-semibold text-ink">

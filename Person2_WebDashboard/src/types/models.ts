@@ -155,8 +155,14 @@ export interface Shift {
   user_id: ObjectId;
   start_time: string;
   end_time: string;
-  /** e.g. "Sun-Thu" (Bangladesh working week). */
-  days_of_week: string;
+  /**
+   * ADR-3 (Person3): 0=Sun..6=Sat, the source of truth. This was mistyped as
+   * `string` — the real field is `number[]`, and rendering it directly prints
+   * `(0,1,2,3,4)`. Use `days_of_week_label` for display; see M3.
+   */
+  days_of_week: number[];
+  /** e.g. "Sun-Thu" (Bangladesh working week) — always derived server-side from `days_of_week`. */
+  days_of_week_label: string;
 }
 
 export type LeaveStatus = 'pending' | 'approved' | 'rejected';

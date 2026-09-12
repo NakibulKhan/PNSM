@@ -3,7 +3,12 @@
 
 # --- test ---
 pytest>=8.0,<10.0
-pytest-asyncio>=0.23,<2.0
+# pytest-asyncio removed here (L7, master audit): every test function in this
+# suite is synchronous. The few places that exercise async code (test_middleware.py)
+# drive it with a plain `asyncio.run()` helper, which needs no pytest plugin —
+# checked before removing, not assumed. Re-add it the day a real `async def
+# test_*` is written; a bare `asyncio.run()` wrapper won't cover an async
+# fixture or `pytest.mark.asyncio`.
 httpx>=0.27,<1.0            # FastAPI's TestClient transport
 jsonschema>=4.20,<5.0       # contract tests validate against the OpenAPI schema
 

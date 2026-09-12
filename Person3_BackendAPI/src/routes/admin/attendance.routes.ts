@@ -52,8 +52,12 @@ router.get(
       adminOk(res, { url: null });
       return;
     }
+    // Normalised to the same { url } shape as the no-selfie branch above —
+    // presignGet's PresignGetResult carries the URL as `download_url`, and
+    // returning that object as-is would have made this endpoint's one caller
+    // handle two different field names depending on which branch ran (M2).
     const presigned = await presignSelfieView(log.selfie_url);
-    adminOk(res, presigned);
+    adminOk(res, { url: presigned.download_url ?? null });
   }),
 );
 

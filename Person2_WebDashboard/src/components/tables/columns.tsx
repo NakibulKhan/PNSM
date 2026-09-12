@@ -2,6 +2,7 @@
 import { Link } from 'react-router-dom';
 import type { ColumnDef } from '@tanstack/react-table';
 import { Avatar } from '@/components/ui/avatar';
+import { SelfieAvatar } from '@/components/ui/selfie-avatar';
 import { Badge, StatusBadge } from '@/components/ui/badge';
 import { ConfidenceBar } from '@/components/ui/confidence-bar';
 import { formatDate, formatTime } from '@/lib/tz';
@@ -15,7 +16,12 @@ export const attendanceColumns: ColumnDef<AttendanceLog, unknown>[] = [
     header: 'Employee',
     cell: ({ row }) => (
       <div className="flex items-center gap-2.5">
-        <Avatar name={row.original.employee_name ?? '—'} src={row.original.selfie_url} size={28} />
+        <SelfieAvatar
+          logId={row.original._id}
+          selfieKey={row.original.selfie_url}
+          name={row.original.employee_name ?? '—'}
+          size={28}
+        />
         <div className="min-w-0">
           <Link
             to={`/employees/${row.original.user_id}`}

@@ -55,10 +55,27 @@ src/
   state/AppContext.jsx
   components/               PinPad, StatusPill
   screens/                  Login, Home, CheckIn, Profile
-  styles/index.css          Tailwind v4 @theme tokens + @supports fallbacks
+  styles/theme.css          Tailwind v4 @theme tokens (imported by index.css, + @supports fallbacks)
 native/                     Info.plist / AndroidManifest / ForegroundService
 scripts/audit-capacitor-parity.mjs
 ```
+
+### `package.json`'s `overrides` block (L8, master audit)
+
+JSON has no comment syntax, so the ten pins there (`mixme`, `protobufjs`, `minimatch`,
+`braces`, `decode-uri-component`, `js-yaml`, `diff`, `ssh2`, `micromatch`, `nunjucks`)
+have no inline explanation — documented here instead. None of them are this app's own
+dependencies: `capacitor-mock-location-checker` (the real, in-use anti-spoofing plugin)
+declares `docgen`, its author's doc-generation CLI, as a regular `dependency` rather than
+a `devDependency`; `docgen` in turn drags in a stale, unmaintained `mecano` sub-tree,
+which is where `npm audit` found 19 real CVEs (4 critical, 9 high). Confirmed by reading
+`capacitor-mock-location-checker`'s actual compiled output that none of that sub-tree is
+ever imported by anything this app's build touches — `docgen` runs only when the
+plugin's own author generates their own docs — so forcing these ten packages to their
+current major versions carries zero behavioral risk here (`npm run build` and the full
+Vitest suite were confirmed unchanged) while taking `npm audit --omit=dev` from 19
+vulnerabilities to 0. Full story: `PNSM_Khan_Edit/DECISIONS.md`, the audit-gate entry
+covering this fix.
 
 ### JWT dual-token handling (`lib/http.js`)
 
@@ -95,7 +112,7 @@ function with injectable dependencies, so it is testable without a device.
 | Capacitor version parity audit | `scripts/audit-capacitor-parity.mjs` |
 | Heartbeat timer, shift-window guard | `lib/backgroundTelemetry.js` |
 | Android Foreground Service | `native/PnsmForegroundService.java` (scaffold) |
-| Tailwind v4 `@theme`, `@supports` fallback | `src/styles/index.css` |
+| Tailwind v4 `@theme`, `@supports` fallback | `src/styles/theme.css` |
 | Axios interceptor layer | `lib/http.js` |
 
 ---

@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import gc
 
+import pytest
+
 from tests.helpers import make_engine, make_settings, synthetic_jpeg
 
 #: Ceiling for the service's own allocations, excluding model weights.
@@ -33,6 +35,7 @@ def _rss_mb() -> float:
     return psutil.Process().memory_info().rss / (1024 * 1024)
 
 
+@pytest.mark.slow
 def test_repeated_verification_stays_under_the_ceiling() -> None:
     settings = make_settings()
     engine = make_engine(settings)
@@ -64,6 +67,7 @@ def test_repeated_verification_stays_under_the_ceiling() -> None:
     )
 
 
+@pytest.mark.slow
 def test_the_replay_caches_do_not_grow_without_bound() -> None:
     """An unbounded replay cache is itself a denial-of-service inside the limit."""
     from app.security.guards import SecurityGuards

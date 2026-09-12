@@ -52,20 +52,6 @@ export const Select = React.forwardRef<HTMLSelectElement, SelectProps>(function 
   );
 });
 
-export const Textarea = React.forwardRef<
-  HTMLTextAreaElement,
-  React.TextareaHTMLAttributes<HTMLTextAreaElement> & { invalid?: boolean }
->(function Textarea({ className, invalid, ...props }, ref) {
-  return (
-    <textarea
-      ref={ref}
-      aria-invalid={invalid || undefined}
-      className={cn(fieldBase, 'py-2', invalid ? 'border-rejected' : 'border-line-strong', className)}
-      {...props}
-    />
-  );
-});
-
 export function Field({
   label,
   hint,

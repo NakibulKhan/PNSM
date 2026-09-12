@@ -1,7 +1,7 @@
 /**
  * TanStack Query setup.
  *
- * Two decisions worth stating:
+ * Three decisions worth stating:
  *
  * 1. One QueryClient per browser session, created lazily in state so React
  *    Strict Mode's double render cannot create two caches.
@@ -10,6 +10,26 @@
  *    after a load-shedding reboot — the dashboard reopens showing the last data
  *    it had instead of an empty shell, and refreshes in the background. This is
  *    the pragmatic 80% of offline support without a service worker.
+ *
+ * 3. M8 (master audit): that persistence used to apply to every query with no
+ *    exceptions — which meant employee PII (names, phone numbers, emails) and
+ *    precise per-check-in GPS coordinates sat in plaintext IndexedDB for up to
+ *    24 hours, on whatever machine the browser profile belongs to. That was
+ *    never a conscious trade-off, just what happened when offline resilience
+ *    was added without auditing what "everything" actually contains.
+ *
+ *    The conscious decision: keep persistence ONLY for the aggregate,
+ *    non-personal data the original rationale was actually about — dashboard
+ *    KPIs/trend, offices, and geofences (an office's fixed, organisational
+ *    location, not a tracked individual's). Everything with a person's name,
+ *    contact details, or live/historical GPS — employees, attendance logs,
+ *    the live feed, the live map, leave requests, notifications, audit
+ *    entries, spoof alerts, admins, selfie URLs — is excluded via
+ *    `PERSISTED_QUERY_NAMESPACES` below. Those queries still work normally
+ *    from TanStack Query's in-memory cache for the life of the tab; they
+ *    simply never get written to disk. A reopened tab shows the dashboard
+ *    shell instantly (the resilience this was built for) and refetches
+ *    everything else fresh, same as if persistence didn't exist.
  */
 import * as React from 'react';
 import {
@@ -44,6 +64,13 @@ const config: QueryClientConfig = {
     mutations: { retry: 0 },
   },
 };
+
+/** Top-level query-key namespaces that carry no PII and no precise location. */
+const PERSISTED_QUERY_NAMESPACES = new Set(['dashboard', 'offices', 'geofences']);
+
+function isSafeToPersist(queryKey: readonly unknown[]): boolean {
+  return typeof queryKey[0] === 'string' && PERSISTED_QUERY_NAMESPACES.has(queryKey[0]);
+}
 
 function createIdbPersister(key = 'pnsm-admin-query-cache'): Persister {
   return {
@@ -85,10 +112,12 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
       persistOptions={{
         persister,
         maxAge: 24 * 60 * 60 * 1_000,
-        // Never persist an error state; a stale success is useful, a stale
-        // failure is just confusing on the next visit.
         dehydrateOptions: {
-          shouldDehydrateQuery: (query) => query.state.status === 'success',
+          // Never persist an error state (a stale success is useful, a stale
+          // failure is just confusing on the next visit), AND never persist a
+          // query outside the non-PII namespaces above (M8).
+          shouldDehydrateQuery: (query) =>
+            query.state.status === 'success' && isSafeToPersist(query.queryKey),
         },
       }}
     >

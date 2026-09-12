@@ -35,6 +35,13 @@ export const SOCKET_EVENTS = {
   notificationNew: 'notification:new',
 } as const;
 
+/**
+ * Must match Person 3's SOCKET_AUTH_FAILURE_MESSAGE (constants/index.ts)
+ * exactly — use-socket.ts checks a connect_error against this to tell an
+ * expired-token handshake rejection apart from a plain network drop.
+ */
+export const SOCKET_AUTH_FAILURE_MESSAGE = 'invalid credentials';
+
 /** Default map view: Dhaka. [latitude, longitude] — Leaflet order. */
 export const DEFAULT_MAP_CENTER: [number, number] = [23.7806, 90.4074];
 export const DEFAULT_MAP_ZOOM = 12;

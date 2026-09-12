@@ -178,15 +178,6 @@ export function stopTelemetry() {
   consecutiveFailures = 0;
 }
 
-export function getTelemetryStatus() {
-  return {
-    running: timerId !== null,
-    lastSentAt,
-    consecutiveFailures,
-    intervalMs: config?.intervalMs ?? DEFAULT_HEARTBEAT_MS,
-  };
-}
-
 /**
  * Android OEM battery-optimisation whitelist prompt.
  *

@@ -14,7 +14,8 @@
 import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { getSocket } from '@/lib/socket';
-import { SOCKET_EVENTS } from '@/lib/constants';
+import { SOCKET_EVENTS, SOCKET_AUTH_FAILURE_MESSAGE } from '@/lib/constants';
+import { refreshAccessToken } from '@/api/http';
 import { queryKeys } from '@/lib/query-keys';
 import type { AttendanceLog } from '@/types/models';
 
@@ -31,7 +32,33 @@ export function useAttendanceSocket(enabled = true) {
 
     const onConnect = () => setState('live');
     const onDisconnect = () => setState('offline');
-    const onConnectError = () => setState('offline');
+
+    /*
+     * M4: socket.io-client's built-in reconnection (reconnectionAttempts:
+     * Infinity in socket.ts) retries forever on a plain network drop, and its
+     * `auth` callback re-reads the access token fresh on every attempt — so a
+     * token that gets refreshed by an unrelated HTTP call is picked up
+     * automatically. But if the tab sits idle on the dashboard with the
+     * socket as the only live connection, the 15-minute access token can
+     * expire with no HTTP request ever failing to trigger that refresh. The
+     * next reconnection attempt then re-sends the same stale token, the
+     * server's handshake middleware rejects it with SOCKET_AUTH_FAILURE_MESSAGE
+     * every time, and the feed was dead until a full reload. Recognising that
+     * specific rejection and refreshing proactively closes the gap: by the
+     * time socket.io's own reconnectionDelay elapses, the auth callback reads
+     * a live token instead of the one that just got rejected.
+     */
+    const onConnectError = (payload: unknown) => {
+      setState('offline');
+      const message = payload instanceof Error ? payload.message : undefined;
+      if (message === SOCKET_AUTH_FAILURE_MESSAGE) {
+        refreshAccessToken().catch(() => {
+          // Refresh token is also gone — the HTTP layer's own 401 handling
+          // will send the user to /login on their next API call. Nothing
+          // more to do here; the socket keeps retrying harmlessly.
+        });
+      }
+    };
 
     const onAttendance = (payload: unknown) => {
       const log = payload as AttendanceLog;

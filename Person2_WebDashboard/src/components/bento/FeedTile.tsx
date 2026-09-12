@@ -16,6 +16,9 @@ export function FeedTile({
   footer,
   emptyTitle = 'Nothing yet',
   emptyMessage = 'This fills in as events arrive.',
+  errorTitle,
+  errorMessage,
+  errorWaking = false,
   ariaLive = false,
   children,
 }: {
@@ -27,6 +30,10 @@ export function FeedTile({
   footer?: ReactNode;
   emptyTitle?: string;
   emptyMessage?: string;
+  /** Override for the 'error' state's TileError copy — e.g. for a waking backend (isBackendWaking). */
+  errorTitle?: string;
+  errorMessage?: string;
+  errorWaking?: boolean;
   /** Set on the feed's own scroll region — announce the arriving record, not the whole tile. */
   ariaLive?: boolean;
   children: ReactNode;
@@ -42,7 +49,7 @@ export function FeedTile({
         {state === 'loading' ? (
           <TileSkeleton />
         ) : state === 'error' ? (
-          <TileError />
+          <TileError title={errorTitle} message={errorMessage} waking={errorWaking} />
         ) : state === 'empty' ? (
           <TileEmpty title={emptyTitle} message={emptyMessage} />
         ) : (

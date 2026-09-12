@@ -162,6 +162,28 @@ function officeNameFor(id: string | null | undefined, offices: Office[]): string
   return offices.find((office) => office._id === id)?.office_name ?? '—';
 }
 
+/**
+ * Mirrors Person3's shiftDays.ts parseWeekLabel() just enough for the four
+ * fixed range options employee-form.tsx's "Working days" select actually
+ * sends ("Sun-Thu", "Sat-Wed", "Mon-Fri", "Sun-Fri") — ADR-3's number[] is the
+ * source of truth, the label is derived, and the mock must store both so
+ * days_of_week isn't a bare string the way it was before M3's fix.
+ */
+const WEEKDAY_INDEX: Record<string, number> = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
+function parseWeekLabel(label: string): number[] {
+  const match = /^([A-Za-z]{3})-([A-Za-z]{3})$/.exec(label.trim());
+  if (!match) return [0, 1, 2, 3, 4];
+  const start = WEEKDAY_INDEX[match[1].toLowerCase()];
+  const end = WEEKDAY_INDEX[match[2].toLowerCase()];
+  if (start === undefined || end === undefined) return [0, 1, 2, 3, 4];
+  const days: number[] = [];
+  for (let i = start, count = 0; count < 7; i = (i + 1) % 7, count += 1) {
+    days.push(i);
+    if (i === end) break;
+  }
+  return days;
+}
+
 // --------------------------------------------------------------- dashboard --
 function computeKpis(): DashboardKpis {
   const data = db();
@@ -183,8 +205,10 @@ function computeKpis(): DashboardKpis {
     checkedInToday: distinct.size,
     onLeave,
     lateArrivals: todayLogs.filter((log) => isLateArrival(log.timestamp)).length,
+    // Rounded to a whole number to match the real dashboardService.ts exactly
+    // (Math.round, not one decimal place) — see kpi-chips.tsx's M9 fix.
     avgFaceMatch: scores.length
-      ? Number((scores.reduce((sum, value) => sum + value, 0) / scores.length).toFixed(1))
+      ? Math.round(scores.reduce((sum, value) => sum + value, 0) / scores.length)
       : 0,
     totalEmployees: data.employees.length,
     flaggedToday: todayLogs.filter((log) => log.status === 'flagged').length,
@@ -244,16 +268,17 @@ function liveMapPoints() {
       if (!current || log.timestamp > current.timestamp) latestByUser.set(log.user_id, log);
     });
 
+  // L4: returns the full AttendanceLog shape (matching Person3's getLiveMap(),
+  // which maps through the same toAttendanceRowDTO() every other attendance
+  // row uses) rather than a hand-picked subset — that subset is exactly what
+  // drifted from the real contract on the frontend's LivePresence type.
   return Array.from(latestByUser.values())
     .filter((log) => log.check_type === 'check_in')
     .map((log) => ({
-      user_id: log.user_id,
+      ...log,
       employee_name: log.employee_name ?? 'Unknown',
       employee_code: log.employee_code ?? '',
       office_name: log.office_name ?? '',
-      timestamp: log.timestamp,
-      face_match_score: log.face_match_score,
-      gps_location: log.gps_location,
     }));
 }
 
@@ -390,12 +415,14 @@ export function handleMockRequest(
       };
       data.employees.unshift(employee);
       data.users.push(employee);
+      const weekLabel = String(payload.days_of_week ?? 'Sun-Thu');
       data.shifts.push({
         _id: newId('s'),
         user_id: employee._id,
         start_time: String(payload.shift_start ?? '09:00'),
         end_time: String(payload.shift_end ?? '18:00'),
-        days_of_week: String(payload.days_of_week ?? 'Sun-Thu'),
+        days_of_week: parseWeekLabel(weekLabel),
+        days_of_week_label: weekLabel,
       });
       // Person 3 generates the 2FA PIN AND an initial mobile-login password
       // server-side and returns both exactly once (FR-01; DECISIONS.md N9's
@@ -510,6 +537,15 @@ export function handleMockRequest(
       return ok(data.attendance.slice(0, limit));
     }
     if (second === 'live-map' && method === 'GET') return ok(liveMapPoints());
+    // M2: matches the real { url } shape (attendance.routes.ts's selfie-url
+    // handler). Every seeded/generated log has selfie_url: null today, so
+    // this never actually fires from demo data — kept for contract parity if
+    // that ever changes, same as the rest of this file's fidelity-over-ease
+    // convention.
+    if (second && third === 'selfie-url' && method === 'GET') {
+      const log = data.attendance.find((candidate) => candidate._id === second);
+      return ok({ url: log?.selfie_url ? '/reference-placeholder.svg' : null });
+    }
     if (second && (third === 'approve' || third === 'reject') && method === 'POST') {
       const log = data.attendance.find((candidate) => candidate._id === second);
       if (!log) return fail(404, 'NOT_FOUND', 'That check-in does not exist.');

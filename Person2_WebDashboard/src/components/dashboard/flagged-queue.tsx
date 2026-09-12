@@ -11,7 +11,7 @@
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, X, MapPin, Clock } from 'lucide-react';
-import { Avatar } from '@/components/ui/avatar';
+import { SelfieAvatar } from '@/components/ui/selfie-avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ConfidenceBar } from '@/components/ui/confidence-bar';
@@ -101,7 +101,12 @@ export function FlaggedQueue() {
 
                 return (
                   <div key={log._id} className="card flex flex-col gap-4 p-4 sm:flex-row sm:items-center">
-                    <Avatar name={log.employee_name ?? '—'} src={log.selfie_url} size={52} />
+                    <SelfieAvatar
+                      logId={log._id}
+                      selfieKey={log.selfie_url}
+                      name={log.employee_name ?? '—'}
+                      size={52}
+                    />
 
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">

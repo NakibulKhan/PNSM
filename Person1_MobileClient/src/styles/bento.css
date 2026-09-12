@@ -17,6 +17,12 @@
   grid-auto-rows: minmax(var(--bento-row), auto);
 }
 
+/* L5 (master audit): only hero/wide/square have a current caller across this
+   app's three screens — tall/chip/rail are checked, not stale: they are the
+   same shared rank vocabulary Person2_WebDashboard's bento.css defines and
+   uses throughout (chip for KPI tiles, rail for filter bars, tall for a
+   scrolling primary-content tile). Kept for design-system parity rather than
+   pruned; adopt per-screen as this app's own Bento coverage grows. */
 .rank-hero  { grid-column: span 4; grid-row: span 3; }
 .rank-wide  { grid-column: span 4; grid-row: span 2; }
 .rank-tall  { grid-column: span 4; grid-row: span 3; }

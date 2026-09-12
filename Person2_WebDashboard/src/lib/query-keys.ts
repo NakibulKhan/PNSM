@@ -18,4 +18,5 @@ export const queryKeys = {
   spoofAlerts: ['spoof-alerts'] as const,
   liveMap: ['live-map'] as const,
   admins: ['admins'] as const,
+  selfieUrl: (logId: string) => ['attendance', logId, 'selfie-url'] as const,
 } as const;

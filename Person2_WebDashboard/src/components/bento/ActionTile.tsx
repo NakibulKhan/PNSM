@@ -36,17 +36,26 @@ function ActionTileButton({
   icon?: ReactNode;
   onClick: () => void;
 }) {
-  const { id } = useTileHeading();
+  // M1: `id` used to sit on the <button> itself with no heading element in
+  // the tile at all. A button can't double as the section's heading, so this
+  // rendered no <h2>/<h3> — fixed the same way reports-view.tsx's sr-only
+  // RailHeading does: a heading carries the id and the accessible name via
+  // aria-labelledby, the visible button stands on its own.
+  const { id, level: Level } = useTileHeading();
   return (
-    <button
-      id={id}
-      type="button"
-      data-interactive
-      onClick={onClick}
-      className="flex h-full w-full items-center justify-center gap-2 rounded-[inherit] text-[13px] font-semibold text-accent hover:bg-accent-soft"
-    >
-      {icon}
-      {label}
-    </button>
+    <>
+      <Level id={id} className="sr-only">
+        {label}
+      </Level>
+      <button
+        type="button"
+        data-interactive
+        onClick={onClick}
+        className="flex h-full w-full items-center justify-center gap-2 rounded-[inherit] text-[13px] font-semibold text-accent hover:bg-accent-soft"
+      >
+        {icon}
+        {label}
+      </button>
+    </>
   );
 }

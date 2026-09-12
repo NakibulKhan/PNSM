@@ -21,14 +21,10 @@ export const MOCK_BACKEND = import.meta.env?.VITE_MOCK_BACKEND === "true";
  * Person 4's bcrypt-hmac-sha256-pepper scheme. Client-side hashing would be
  * security theater against a bcrypt-compare backend (bcrypt needs the
  * plaintext) and provides no real protection for a 4-digit keyspace anyway.
+ * The `sha256Hex` client-side pre-hash helper this decision made unnecessary
+ * (and this file's README once still documented as `CLIENT_SIDE_PIN_PREHASH`)
+ * was deleted here — no caller ever sent a hashed PIN (L1/L3, master audit).
  * =========================================================================== */
-export async function sha256Hex(value) {
-  const bytes = new TextEncoder().encode(value);
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
-  return Array.from(new Uint8Array(digest))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-}
 
 /* --------------------------------------------------------------------- auth */
 

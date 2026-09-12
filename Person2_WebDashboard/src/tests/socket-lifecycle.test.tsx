@@ -10,7 +10,7 @@
  * unmount.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { StrictMode } from 'react';
+import { StrictMode, act } from 'react';
 import { render, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
@@ -38,7 +38,17 @@ vi.mock('@/lib/socket', () => ({
   }),
 }));
 
+const refreshAccessToken = vi.fn().mockResolvedValue('new-token');
+vi.mock('@/api/http', () => ({ refreshAccessToken }));
+
 const { useAttendanceSocket } = await import('@/hooks/use-socket');
+
+/** Finds the handler `use-socket.ts` registered for a given event name. */
+function handlerFor(event: string): (payload: unknown) => void {
+  const call = on.mock.calls.find(([name]) => name === event);
+  if (!call) throw new Error(`No handler was registered for "${event}"`);
+  return call[1];
+}
 
 function Probe() {
   useAttendanceSocket(true);
@@ -61,6 +71,7 @@ beforeEach(() => {
   disconnect.mockClear();
   on.mockClear();
   off.mockClear();
+  refreshAccessToken.mockClear();
   connected = false;
 });
 
@@ -106,5 +117,30 @@ describe('socket lifecycle under Strict Mode', () => {
     expect(events).toContain('attendance:new');
     expect(events).toContain('connect');
     expect(events).toContain('disconnect');
+  });
+});
+
+/**
+ * M4: a stale access token used to leave the live feed dead until a full
+ * reload — the server rejects the handshake with SOCKET_AUTH_FAILURE_MESSAGE
+ * every retry, and nothing ever refreshed the token socket.io kept resending.
+ */
+describe('socket reconnection after an expired access token', () => {
+  it('refreshes the access token when the handshake is rejected as invalid credentials', async () => {
+    renderProbe();
+    await waitFor(() => expect(on).toHaveBeenCalledWith('connect_error', expect.any(Function)));
+
+    act(() => handlerFor('connect_error')(new Error('invalid credentials')));
+
+    await waitFor(() => expect(refreshAccessToken).toHaveBeenCalledTimes(1));
+  });
+
+  it('does not refresh on a plain network-drop connect_error', async () => {
+    renderProbe();
+    await waitFor(() => expect(on).toHaveBeenCalledWith('connect_error', expect.any(Function)));
+
+    act(() => handlerFor('connect_error')(new Error('websocket error')));
+
+    expect(refreshAccessToken).not.toHaveBeenCalled();
   });
 });

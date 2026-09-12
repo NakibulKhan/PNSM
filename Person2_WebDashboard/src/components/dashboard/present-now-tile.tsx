@@ -3,8 +3,9 @@ import { useQuery } from '@tanstack/react-query';
 import { BentoTile, useTileHeading } from '@/components/bento/BentoTile';
 import { TileSkeleton } from '@/components/bento/TileSkeleton';
 import { TileError } from '@/components/bento/TileError';
+import { WakingState } from '@/components/common/states';
 import { Skeleton } from '@/components/ui/skeleton';
-import { fetchData } from '@/api/client';
+import { fetchData, isBackendWaking } from '@/api/client';
 import { queryKeys } from '@/lib/query-keys';
 import type { DashboardKpis } from '@/types/api';
 import type { TrendPoint } from '@/types/api';
@@ -16,9 +17,11 @@ const TrendBars = lazy(() =>
 /**
  * The hero tile — "the one question the screen answers" (master prompt §3
  * rule 3). Combines the headcount numeral (`GET /dashboard/kpis`) with the
- * 7-day trend (`GET /dashboard/trend?days=7`, the same query key `TrendChart`
- * used, so the cache is shared) rather than splitting them into two tiles,
- * since together they answer the one question in one glance.
+ * 7-day trend (`GET /dashboard/trend?days=7`, under `queryKeys.trend(7)` —
+ * the pre-Bento `TrendChart` component that used to fetch this separately was
+ * deleted once this tile absorbed it, so this is the only consumer now)
+ * rather than splitting them into two tiles, since together they answer the
+ * one question in one glance.
  */
 export function PresentNowTile() {
   const kpis = useQuery({
@@ -39,7 +42,16 @@ export function PresentNowTile() {
       {state === 'loading' ? (
         <TileSkeleton />
       ) : state === 'error' ? (
-        <TileError title="Present-now count unavailable" />
+        // The hero tile is the first thing a page load shows, and this app's
+        // free-tier backend really does cold-sleep — a real ECONNABORTED here
+        // reads as "the whole dashboard is broken" unless it's told apart
+        // from a genuine failure. Big enough (rank="hero", 3 grid rows) for
+        // WakingState's full copy to fit, unlike the chip tiles beside it.
+        isBackendWaking(kpis.error) ? (
+          <WakingState className="h-full" />
+        ) : (
+          <TileError title="Present-now count unavailable" />
+        )
       ) : (
         <PresentNowBody
           checkedInToday={kpis.data!.checkedInToday}
@@ -60,13 +72,16 @@ function PresentNowBody({
   totalEmployees: number;
   trend: ReturnType<typeof useQuery<TrendPoint[]>>;
 }) {
-  const { id } = useTileHeading();
+  // M1: this used to destructure only `id` and render a plain `<p>` — this is
+  // the hero tile, so it's specifically the missing <h2> (the dashboard's
+  // outline jumped h1 straight to h3 everywhere else on the page).
+  const { id, level: Level } = useTileHeading();
 
   return (
     <div className="flex h-full flex-col p-4">
-      <p id={id} className="eyebrow">
+      <Level id={id} className="eyebrow">
         Present now
-      </p>
+      </Level>
       <p className="mt-1.5 flex items-baseline gap-2">
         <span className="tnum text-[64px] font-light leading-none text-ink">{checkedInToday}</span>
         <span className="tnum text-[18px] font-semibold text-ink-muted">/ {totalEmployees}</span>

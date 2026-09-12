@@ -1,7 +1,16 @@
 import React from "react";
 import { useTileHeading } from "./BentoTile";
 
-/** Title, one support line, one optional action — never a second heading. */
+/**
+ * Title, one support line, one optional action — never a second heading.
+ *
+ * L5 (master audit): `support`/`action` have no current callers in this app's
+ * three screens — checked, not assumed, and left in rather than removed: the
+ * same props on Person2_WebDashboard's TileHeader.tsx (this component's web
+ * counterpart, same design system) are used throughout that app for exactly
+ * this — a subtitle line, a header-corner control. Person1's screens simply
+ * haven't needed either yet, not a reason to narrow the shared contract.
+ */
 export default function TileHeader({ title, support, action }) {
   const { id, level: Level } = useTileHeading();
 

@@ -28,6 +28,20 @@ const CORE_PACKAGES = [
   "@capacitor/android",
 ];
 
+/**
+ * M6 (master audit): this used to only WARN on plugin drift, so
+ * @capacitor/background-runner sitting 5 majors behind an already-v8 core
+ * (the only real background-execution path this app has) went unnoticed
+ * indefinitely. Checked npm directly: background-runner's latest STABLE
+ * release is still 3.0.0 — there is no v4+ to upgrade to yet, let alone v8.
+ * This is a real, currently-unresolvable upstream gap, not an oversight, so
+ * it is an explicit, documented exception rather than a reason to keep every
+ * drift check as a mere warning. Any OTHER plugin drifting from core now
+ * fails the build; re-run `npm view <pkg> versions` before ever widening this
+ * list, and narrow it again the day background-runner ships a matching major.
+ */
+const ACCEPTED_PLUGIN_DRIFT = new Set(["@capacitor/background-runner"]);
+
 function majorOf(range) {
   if (!range) return null;
   const m = String(range).match(/(\d+)\./);
@@ -75,12 +89,22 @@ function main() {
       .filter(([n]) => n.startsWith("@capacitor/") && !CORE_PACKAGES.includes(n))
       .filter(([, r]) => majorOf(r) !== null && majorOf(r) !== coreMajor);
 
-    if (pluginDrift.length) {
-      console.warn("\nWARN: official plugins on a different major than core:");
-      for (const [n, r] of pluginDrift) console.warn(`  ${n.padEnd(30)} ${r}`);
-      console.warn(
-        "      Official plugins are versioned in lockstep with core; verify these are intentional."
+    const accepted = pluginDrift.filter(([n]) => ACCEPTED_PLUGIN_DRIFT.has(n));
+    const unaccepted = pluginDrift.filter(([n]) => !ACCEPTED_PLUGIN_DRIFT.has(n));
+
+    if (accepted.length) {
+      console.log("\nACCEPTED: documented drift (no v-matching release exists upstream yet):");
+      for (const [n, r] of accepted) console.log(`  ${n.padEnd(30)} ${r}`);
+    }
+
+    if (unaccepted.length) {
+      console.error("\nFAIL: official plugins on a different major than core:");
+      for (const [n, r] of unaccepted) console.error(`  ${n.padEnd(30)} ${r}`);
+      console.error(
+        "      Official plugins are versioned in lockstep with core. Align them, or add an" +
+          " explicit, documented entry to ACCEPTED_PLUGIN_DRIFT if no matching release exists."
       );
+      failed = true;
     }
   }
 

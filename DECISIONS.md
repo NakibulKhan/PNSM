@@ -2178,3 +2178,299 @@ one thing that looked like one (the missing Deactivate tile) was confirmed, by c
 permission list rather than assuming, to be correct RBAC behavior. All test data created during this
 verification (the enrollment attempt, the test geofence) was cleaned up or never persisted, leaving
 demo state exactly as found.
+
+### N48 — MASTER AUDIT, resumed: the deferred flaky test, both obfuscator configs, the lock file, and three Medium findings
+
+Continuation of the MASTER AUDIT (blockers B1-B5 and High items H1-H3 were already closed). This pass
+closed out Phase 2's remainder and three Phase 3 Medium findings, each verified live rather than
+assumed.
+
+**The deferred flaky test, resolved as non-reproducible.** "HR cannot reach Super Admin screens, but a
+Super Admin can" had failed once inside the full 7-test suite while passing in isolation. Ran the full
+suite four more times with no code changes: 4/4 clean, including that test, at a consistent ~3.7s. No
+root cause was found because there was nothing left to find — the original failure did not reproduce.
+Treating this as a one-off environmental hiccup rather than inventing a speculative fix for a bug that
+won't reproduce; CI's existing `retries: process.env.CI ? 1 : 0` is already the correct safety net for
+exactly this class of transient flake.
+
+**H4/H5 — both obfuscator configs fixed, both `dist-obfuscated/` rebuilt and verified live.** Person2's
+exclude list still named `trend-chart.tsx`, deleted by the Bento redesign; the live
+`lazy(() => import('./trend-bars'))` that replaced it, in `present-now-tile.tsx:12-14`, was unprotected.
+Fixed the list, rebuilt `dist-obfuscated/`, served it, signed in, and confirmed the dashboard's trend
+chart renders with zero console errors — the exact "Failed to resolve module specifier" failure mode a
+wrong exclude list produces. Person1 had no exclude list at all. Added one for
+`compression.js` (its `new Worker(new URL("./compression.worker.js", import.meta.url))` is the same
+specifier-corruption risk) and for `compression.worker.js` itself (a timing-sensitive canvas re-encode
+loop where `controlFlowFlattening` overhead works against the whole point of running it off the main
+thread). `mockLocation.js`'s `await import("capacitor-mock-location-checker")` looked like the same risk
+at first read; checking the actual built output showed Rollup statically inlines that resolvable npm
+package straight into the single main chunk (this app has no other code-split point), so there is no
+runtime specifier left for the obfuscator to corrupt — verified by grepping the built bundle for the
+package's own exports before excluding it needlessly. Rebuilt Person1's `dist-obfuscated/` clean.
+
+**H6 — `requirements.lock` generated.** `make lock` (pip-compile --generate-hashes) had never been run;
+the Dockerfile's own fallback path (`WARNING: requirements.lock absent; installing from ranges`) was
+the only path ever exercised. Generated it: 984 lines, every one of requirements.txt's ranges resolved
+to a specific hash-pinned current version (fastapi 0.141.1, cryptography 50.0.1, numpy 2.5.3, etc.).
+
+**M9 — the fake decimal on Avg Face Match.** `dashboardService.ts` already rounds `avgFaceMatch` to a
+whole number (`Math.round`); `kpi-chips.tsx` called `.toFixed(1)` on it regardless, manufacturing a
+"90.4%"-style decimal the value never had. Fixed the display and brought the mock backend's
+`computeKpis()` into line with the same rounding, so demo mode matches the real contract exactly.
+Confirmed live: the dashboard now reads a clean "90 %".
+
+**M3 — `days_of_week` rendered as `(0,1,2,3,4)`.** `types/models.ts` mistyped the field as `string`; it
+is actually `number[]`, with a separate server-derived `days_of_week_label` the UI never read.
+`employee-detail.tsx` rendered the raw array. Fixed the type, switched the render to
+`days_of_week_label`, and brought both `seed.ts` and the mock's employee-creation handler (which had the
+same string-only shape, plus a small `parseWeekLabel` mirroring Person3's ADR-3 contract) into line.
+Confirmed live: an employee's Shift line now reads "10:00 – 19:00 (Sun-Thu)".
+
+**M4 — the socket never recovered from an expired access token.** A tab left idle on the dashboard has
+no failing HTTP request to trigger the normal refresh-and-replay path, so the 15-minute access token
+could expire with nothing noticing; the next Socket.IO reconnection attempt then resent the same stale
+token forever, and the server's handshake middleware rejected every retry with its literal
+`'invalid credentials'` message — `use-socket.ts` only set `'offline'` and never recovered short of a
+full reload. Fixed by recognising that specific `connect_error` message (mirrored into Person2's own
+`SOCKET_AUTH_FAILURE_MESSAGE` constant, matching Person3's exactly, same pattern already used for
+`SOCKET_EVENTS`) and proactively calling `refreshAccessToken()` so the next automatic reconnection
+attempt's `auth` callback reads a live token instead of the one that just got rejected. Added two
+regression tests exercising the real registered `connect_error` handler directly: one confirms the
+refresh fires on the auth-failure message, the other confirms it does *not* fire on a plain
+network-drop `connect_error` (the case that must keep behaving exactly as before).
+
+**Decision:** all of Phase 2 (the gates that could not previously catch anything) and three Phase 3
+Medium findings are closed, each verified by actually running the affected build or live app rather
+than by reading the diff. `npm run verify` and the full Playwright suite are both green. Remaining from
+the Master Audit plan: M1 (a11y heading regression), M2 (selfie presign), M5-M8, the L1-L8 cleanup pass,
+Phase 5's live Docker/Atlas verification, Phase 6's honest perf measurement, and Phase 7's documentation
+close-out.
+
+### N49 — MASTER AUDIT, continued: the a11y regression and the selfie presign gap
+
+**M1 — the dashboard had no `<h2>` at all.** `BentoTile`'s context correctly computes `level: 'h2'|'h3'`
+per rank, but three consumers destructured only `{ id }` and rendered a plain `<p id={id}>` (`StatTile`,
+`present-now-tile.tsx`) or put the id on a `<button>` with no heading element in the tile at all
+(`ActionTile`) — so the documented h2-hero/h3-everything-else contract (§10) was never actually
+followed anywhere it mattered. Fixed all three to read `level` and render it (`ActionTile` gets an
+sr-only heading alongside its visible button, the same pattern `reports-view.tsx`'s `RailHeading`
+already used). Confirmed live via the rendered DOM: `H1: Good day, Syeda → H2: Present now → H3: Late
+arrivals / On leave / Avg face match / Live check-in feed` — a correct, unbroken outline.
+
+**M2 — flagged-queue (and attendance-table, and live-feed) selfies would 403 on a private bucket.**
+`GET /attendance/:id/selfie-url` existed, correctly presigns via Person4, and was never called from
+anywhere — three separate call sites (`flagged-queue.tsx`, `columns.tsx`'s attendance table, and
+`live-feed-tile.tsx`) all passed the raw `selfie_url` object key straight into `Avatar`'s `src`, which
+renders it as an `<img>` with no fallback for a broken load. Also found and fixed a smaller bug in the
+endpoint itself while wiring it up: it returned `{ url: null }` on the no-selfie branch but the raw
+`PresignGetResult` (keyed `download_url`, not `url`) on the success branch — an inconsistent contract
+its one caller would have had to special-case. Normalised to always return `{ url }`. Added a shared
+`useSelfieUrl()` hook plus a `SelfieAvatar` wrapper component (a bare hook call cannot live inside a
+`.map()` or a TanStack Table `cell` render function without violating the rules of hooks — `SelfieAvatar`
+gives each row real JSX-element identity instead) and wired it into all three sites. Brought the mock
+backend into contract parity too, though every seeded/generated log has `selfie_url: null` today so it
+never actually fires from demo data. Verified live in a fresh browser tab (the first attempt showed
+`Avatar is not defined` and `useAuth outside AuthProvider` errors that turned out to be stale Vite HMR
+artifacts from mid-edit module replacement in an already-open tab — a brand-new tab through the full
+sign-in flow showed zero console errors on the dashboard, attendance table, and flagged queue, all
+rendering correct initials-fallback avatars exactly as before, since every demo record's `selfie_url`
+is still null). `npm run verify`, the full Playwright suite, and Person3's 159-test suite are all green.
+
+**Decision:** all of Phase 3's Medium findings that touch the frontend contract (M1, M2, M3, M4, M9) are
+now closed. Remaining: M5 (DOM/render test coverage for the Bento primitives), M6 (Capacitor plugin
+version drift), M7 (SBOMs), M8 (the IndexedDB PII persistence decision), the L1-L8 cleanup pass, Phase
+5's live Docker/Atlas verification, Phase 6's honest perf measurement, and Phase 7's documentation
+close-out.
+
+### N50 — MASTER AUDIT, continued: Capacitor drift, SBOMs, and the IndexedDB PII decision
+
+**M6 — the Capacitor parity script only warned.** Checked npm directly before deciding anything:
+`@capacitor/background-runner`'s latest STABLE release is still `3.0.0` — there is no v4+, let alone a
+v8 matching this app's core. That makes it a real, currently-unresolvable upstream gap, not an
+oversight to silently keep warning about forever. Added an explicit `ACCEPTED_PLUGIN_DRIFT` allowlist
+(one documented entry, with the npm-check instruction attached so nobody has to re-derive this later)
+and changed every *other* plugin drift from `console.warn` to a build failure. Verified:
+`npm run audit:capacitor` now prints `ACCEPTED: ... @capacitor/background-runner ^3.0.0` and exits 0;
+any undocumented drift would exit 1.
+
+**M7 — no SBOM had ever been generated.** All three Node quadrants already had an `npm run sbom` script
+wired to `npm sbom --sbom-format cyclonedx`; none had ever been run. Ran all three and validated the
+output directly (not just "the command exited 0"): all three are well-formed CycloneDX 1.5 with real
+component graphs (Person1: 465 components, Person2: 517, Person3: 464). `sbom.json` stays gitignored
+and regenerated on demand, per its existing comment.
+
+**M8 — the IndexedDB PII persistence decision.** `query-provider.tsx` persisted the *entire* TanStack
+Query cache to IndexedDB for 24 hours with no exceptions — employee names/phones/emails, precise
+per-check-in GPS, attendance history, the live map's real-time employee locations, all sitting in
+plaintext on whatever machine the browser profile belongs to. That was never a conscious trade-off,
+just what "persist everything for offline resilience" happened to include once actually audited. Made
+the conscious call explicit in code, not just prose: `PERSISTED_QUERY_NAMESPACES` now allow-lists only
+`dashboard` (KPIs/trend), `offices`, and `geofences` — the aggregate, non-personal data the original
+offline-resilience rationale (a reopened tab after a load-shedding reboot showing the dashboard shell
+instantly) was actually about. Everything else — employees, attendance, the live feed, the live map,
+leave, notifications, audit, spoof alerts, admins, selfie URLs — still works normally from the
+in-memory cache for the life of the tab; it simply never reaches disk. Verified live by reading the
+actual IndexedDB record after navigating both the dashboard and the Employees page: only
+`["dashboard","kpis"]`, `["dashboard","trend",7]`, and `["offices"]` were persisted — the employees
+query that had just loaded (and rendered correctly) was confirmed absent from disk.
+
+**Decision:** M1-M4, M6-M9 are closed. `npm run verify` and the full Playwright suite are green.
+Remaining: M5 (DOM/render test coverage for the Bento primitives), the L1-L8 cleanup pass, Phase 5's
+live Docker/Atlas verification, Phase 6's honest perf measurement, and Phase 7's documentation
+close-out.
+
+### N51 — MASTER AUDIT, continued: L1-L4 cleanup, and one gap flagged rather than silently fixed
+
+Re-verified every L1-L4 candidate against current code before touching anything — several of the
+original plan's L1 items (`CHECKIN_STEPS`, `__resetHttpStateForTests`) had already become live-used by
+earlier fixes in this same audit and were correctly left alone.
+
+**L1 — dead exports.** Confirmed genuinely 0-importer and removed: Person2's `Textarea` (a speculative
+UI primitive nothing ever needed) and `WakingState`; Person1's `sha256Hex` (orphaned scaffolding from
+the already-abandoned client-side-PIN-prehash approach — the comment explaining that decision was kept,
+the dead function wasn't), `getTelemetryStatus`, and `fmt`. **Not deleted**, on purpose: `ActionTile`
+(0 importers, but M1 just fixed its a11y contract minutes earlier — it's a documented stub for a future
+screen per its own header comment, not accidental dead code) and `ChartTile` (dev-preview-only, which is
+what the original finding already said, not "dead"). `WakingState` turned out to be more interesting
+than plain dead code once read: `toApiError()` in `client.ts` already produces a `BACKEND_TIMEOUT`
+error code for exactly the free-tier cold-start scenario `WakingState` was built to explain, but nothing
+anywhere ever checks for that code — every page falls through to the generic `ErrorState` instead. That
+is a real, confirmed gap, but wiring it into every page's error handling is a different-shaped task than
+"delete a dead export," so it was flagged as a separate follow-up (`task_c831ebb5`) rather than either
+silently fixed out-of-scope or silently deleted.
+
+**L2 — stale doc comments naming deleted files.** `StatTile.tsx`, `present-now-tile.tsx`, and
+`live-feed-tile.tsx` all referenced pre-Bento components (`stat.tsx`, `TrendChart`, `LiveFeed`) that
+were deleted once these tiles absorbed them — reworded to describe them as deleted predecessors rather
+than implying they still exist. `MapTile.tsx` was different: its comment said "stubbed for the
+Geofence Studio / Live Map phases," but grepping actual imports showed the Live Map screen
+(`live-presence.tsx`) already uses it — the comment was describing a state that no longer existed.
+
+**L3 — Person1 README/vite.config.js stale `@theme` pointer.** Both pointed at `styles/index.css`;
+`@theme`'s actual definition lives in `styles/theme.css` now (`index.css` just `@import`s it plus
+`bento.css`). Fixed both. The README's `CLIENT_SIDE_PIN_PREHASH` mention was deliberately left alone —
+it sits inside a `<details>` "Original blocker writeup," explicitly kept as a historical record under a
+heading that already says "RESOLVED" above it; editing preserved history to match current reality would
+defeat the point of keeping it.
+
+**L4 — `types/live.ts`'s `LivePresence` had drifted from the real DTO.** It was a hand-copied subset
+missing `_id`, `status`, and others; Person3's `getLiveMap()` actually maps through the exact same
+`toAttendanceRowDTO()` every other attendance-row endpoint uses. Replaced the hand-copied interface with
+`export type LivePresence = AttendanceLog` — an alias can't drift the way a duplicate did. This
+immediately surfaced two real, previously-masked gaps `tsc` caught right away: `live-presence.tsx` was
+treating `employee_name`/`office_name` as always-present when `AttendanceLog` correctly marks them
+optional (denormalised fields that can be null if population fails) — fixed both with fallback text.
+Also brought the mock's `liveMapPoints()` into the same shape (`{ ...log }` instead of a hand-picked
+field list) for demo-mode parity. Verified live: Live Map renders the map, the by-office counts, and the
+present-employees list correctly with zero console errors.
+
+**Decision:** L1-L4 done. `npm run verify` and the full Playwright suite are green after every step in
+this entry. Remaining: L5-L8, M5, Phase 5's live Docker/Atlas verification, Phase 6's honest perf
+measurement, and Phase 7's documentation close-out.
+
+### N52 — MASTER AUDIT, continued: L5-L8, real Bento render coverage (M5), and one bug M5 caught live
+
+**L5 — Person1 uses only 3 of 6 tile ranks; `TileHeader`'s `support`/`action` have no caller.** Checked
+before touching anything: `tall`/`chip`/`rail` and `support`/`action` are the *same* shared vocabulary
+Person2_WebDashboard's parallel Bento system already uses extensively (chip KPI tiles, rail filter bars,
+`support`/`action` throughout employee-detail/settings/admin screens) — Person1's three simple screens
+just haven't needed them yet. Redesigning a screen to force-adopt one would be inventing UI to satisfy an
+audit line, not fixing a bug, so the decision made explicit in code instead: documented both as
+intentional design-system parity infrastructure, not stale cruft, directly in `bento.css` and
+`TileHeader.jsx`.
+
+**L6 — three unused CSS tokens (`--color-geo`, `--color-ink-soft`, `--color-pending`).** Same judgment
+call, same reasoning: `--color-geo`/`--color-pending` are explicit master-prompt-vocabulary aliases
+(the same pattern `--color-anomaly` already uses successfully); `--color-ink-soft` is the one unused rung
+in an otherwise fully-used `ink → ink-soft → ink-muted → ink-faint` text scale. Documented in
+`theme.css` rather than deleted spec-required vocabulary or a scale gap that would just get reinvented.
+
+**L7 — Person4 Python hygiene, three findings, three different resolutions.** `pytest-asyncio`: verified
+genuinely zero benefit (every test is synchronous; the two async call sites in `test_middleware.py` drive
+themselves with a plain `asyncio.run()`, which needs no pytest plugin) — removed from
+`requirements-dev.txt`. The `slow` marker: unlike the dependency, this had a real, waiting use —
+`tests/memory/test_memory_ceiling.py`'s two heaviest tests (50 and 20,000 iterations, ~4.6s combined,
+matching the marker's own "takes more than a second" definition) were never marked. Applied it there
+instead of deleting the marker. `cryptography>=42.0`: the one unbounded pin in the file — capped at
+`<51.0`, matching this file's own established pattern of bounding at the major above what actually
+resolves (confirmed via `requirements.lock`: 50.0.1). Regenerated the lock; all 96 backend tests
+(Person4) still pass.
+
+**L8 — Person1's 10-entry `overrides` block had no explanation.** JSON has no comment syntax, so this
+couldn't be fixed inline. Traced the actual history in this file's own N-series (the `docgen`/`mecano`
+dead sub-tree `capacitor-mock-location-checker` drags in, 19 real CVEs, confirmed unreachable by anything
+this app's build touches) and wrote it up as a new README.md section instead of leaving it undocumented
+or, worse, writing a plausible-sounding explanation from guesswork.
+
+**M5 — zero DOM/render coverage for the entire Bento redesign, now closed with real tests that found a
+real bug.** Added `bento-primitives.test.tsx`/`bentoPrimitives.test.jsx` for both apps (BentoTile's
+heading-level contract, TileHeader, empty/skeleton/error states, BentoGrid) and one full migrated-screen
+test per app: `dashboard-page.test.tsx` (Person2 — the flagship hero+chips+feed composition, mocking only
+the network boundary and auth context) and `profileScreen.test.jsx` (Person1 — four `rank="square"`
+tiles). Building the dashboard test surfaced a real jsdom gap (recharts' `<ResponsiveContainer>`
+requires `ResizeObserver`, which jsdom doesn't provide — added a stub to `tests/setup.ts` so this
+doesn't silently break every future test that renders the trend chart, not just this one).
+
+**A real bug, not a coverage gimmick: `ProfileScreen.jsx`'s identity-card tile rendered no heading
+element at all.** Writing "does every tile's `aria-labelledby` resolve to a real element" as a real
+assertion (not assumed, checked) caught it immediately — `BentoTile` always sets
+`aria-labelledby={id}` on its `<section>` regardless of whether a child ever renders that `id`, and the
+identity card just showed the employee's name as a plain `<p>` with no `TileHeader` and no
+`useTileHeading()` call. Every other tile on the screen was fine; this one silently had no accessible
+name for a screen reader. Fixed by making the name itself the tile's real heading (same pattern M1
+already established for StatTile/present-now-tile: read `level`/`id` from context, render the already-
+visible text as that heading rather than adding a redundant title above it). Verified live: logged into
+the mobile app's demo backend, read `aria-labelledby` resolution for all four Profile tiles directly from
+the DOM — all four now resolve correctly, including the previously-broken one — and confirmed the visible
+text is byte-for-byte unchanged.
+
+**Decision:** L1-L8 and M5 are all closed. Full suites green after every step: Person1 (11 files, 95
+tests), Person2 (`npm run verify` + 9 files/96 tests + the full 7-test Playwright suite), Person4 (all
+tests, unchanged). Remaining from the Master Audit plan: Phase 5 (live Docker Compose against the real
+MongoDB Atlas cluster), Phase 6 (honest perf/a11y measurement), Phase 7 (documentation close-out).
+
+### N53 — `WakingState` wired up: a cold free-tier backend no longer reads as a broken app
+
+L1's flagged follow-up (`task_c831ebb5`), picked up directly in this session. Confirmed the gap was real
+before starting: `BACKEND_TIMEOUT` (the code `toApiError()` produces for an `ECONNABORTED` axios error —
+exactly what a Render/Koyeb free-tier cold start looks like) had exactly one hit in the codebase, its own
+definition; `WakingState` had exactly one hit, its own definition. Nothing connected them.
+
+**Auditing the actual error-rendering landscape first** (rather than assuming the original spawn
+prompt's premise) found the real shape was more specific than "every page falls through to ErrorState":
+only 4 components in the whole app check `isError` at all — `employee-detail.tsx` (a genuine page-level
+`ErrorState` use) and the dashboard's three tiles (`present-now-tile.tsx`, `kpi-chips.tsx`,
+`live-feed-tile.tsx`), which render a *tile-level* `TileError`, not `ErrorState` — a distinction that
+mattered for the fix, not just the diagnosis.
+
+**The fix, sized to each surface:**
+- Added `isBackendWaking(error)` to `api/client.ts` — one shared check (`error instanceof ApiError &&
+  error.code === 'BACKEND_TIMEOUT'`) every call site uses, so nothing re-tests the string inline.
+- `employee-detail.tsx` (page-level, plenty of room): literal `ErrorState` → `WakingState` swap.
+- `present-now-tile.tsx` (the hero tile — 3 grid rows, the first thing a page load shows): swaps in the
+  full `WakingState` component directly, same as the page-level case — big enough to fit it properly.
+- `kpi-chips.tsx` / `live-feed-tile.tsx` (chip and tall tiles — too compact for `WakingState`'s
+  `py-12` layout): extended `StatTile`/`FeedTile` with `errorTitle`/`errorMessage` overrides, the exact
+  same pattern `FeedTile`'s pre-existing `emptyTitle`/`emptyMessage` already established — reusing an
+  existing convention rather than inventing one, per the task's own instruction.
+
+**A real design inconsistency the first browser check caught**: the compact chip copy first came back
+rendering "Waking up" in `TileError`'s hard-coded `text-anomaly` (alarm red) — technically correct copy,
+wrong signal, undermining the entire point (WakingState's own rationale: "has to read as waiting, not
+failing"). Added a `waking` boolean prop to `TileError` that swaps to `text-accent` — the same colour
+`WakingState`'s own icon already uses — rather than introducing a third ad-hoc signal colour. Re-verified
+live: all three chips and the hero tile render in the calm accent tone.
+
+**Verified live, not assumed**: temporarily patched `demo-adapter.ts` to throw a real `ECONNABORTED`
+`AxiosError` for `dashboard/kpis`, `attendance/feed`, and `employees/:id`, cleared the persisted
+IndexedDB query cache (M8's own scoping meant stale cached KPI data would otherwise mask the error path
+entirely on reload), and confirmed in the browser: the hero tile shows full `WakingState` copy, both
+chips and the feed tile show the compact accent-toned "Waking up" copy, the employee-detail page shows
+full `WakingState`, and reverting the patch restores completely normal operation. Reverted the temporary
+patch in full (`git diff` on `demo-adapter.ts` is empty).
+
+**Locked in with regression tests**, not left to manual verification alone: `api-client.test.ts` (4 tests
+on `isBackendWaking` itself), two new `TileError` tone tests in `bento-primitives.test.tsx`, and a new
+`describe` block in `dashboard-page.test.tsx` exercising the real composition against a mocked
+`BACKEND_TIMEOUT` end to end (3 tests). `npm run verify` (105 tests now) and the full Playwright suite
+are both green.

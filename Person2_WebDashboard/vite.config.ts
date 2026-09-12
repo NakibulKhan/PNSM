@@ -38,18 +38,23 @@ export default defineConfig({
     ...(process.env.OBFUSCATE === '1'
       ? [
           obfuscatorPlugin({
-            // Excludes the two files whose `React.lazy(() => import('@/pages/...'))`
-            // dynamic-import specifiers the obfuscator's string-array transform
-            // was found (by actually running the obfuscated build and loading it
-            // in a browser, not assumed) to corrupt: it pulls the literal
-            // specifier string into an encoded array *before* Vite/Rollup's
-            // import-analysis rewrites it to a real hashed chunk URL, so the
-            // browser ends up trying to resolve the raw alias
-            // '@/pages/login' at runtime instead — "Failed to resolve module
-            // specifier '@/pages/login'". Excluding just the files that
-            // contain the dynamic imports keeps the rest of the app's logic
+            // Excludes every file whose `lazy(() => import(...))` dynamic-import
+            // specifier the obfuscator's string-array transform was found (by
+            // actually running the obfuscated build and loading it in a browser,
+            // not assumed) to corrupt: it pulls the literal specifier string into
+            // an encoded array *before* Vite/Rollup's import-analysis rewrites it
+            // to a real hashed chunk URL, so the browser ends up trying to resolve
+            // the raw alias '@/pages/login' at runtime instead — "Failed to
+            // resolve module specifier '@/pages/login'". Excluding just the files
+            // that contain the dynamic imports keeps the rest of the app's logic
             // (auth, RBAC, API client, business logic) genuinely obfuscated.
-            exclude: ['src/router/routes.tsx', 'src/components/dashboard/trend-chart.tsx'],
+            //
+            // trend-chart.tsx (the original second entry) was deleted by the
+            // Bento redesign; present-now-tile.tsx now carries the live
+            // `lazy(() => import('./trend-bars'))` that replaced it — found
+            // unprotected by the master audit, since this list was never updated
+            // when the file was renamed/moved.
+            exclude: ['src/router/routes.tsx', 'src/components/dashboard/present-now-tile.tsx'],
             options: {
               compact: true,
               controlFlowFlattening: true,
