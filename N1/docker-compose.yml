@@ -1,7 +1,21 @@
-# PNSM — local dev-complete stack (ROADMAP.md Phase 5).
+# N²PSM — full stack orchestration. Owned by N1 (deployment).
 #
-#   cp .env.example .env      # fill in the generated secrets, see SETUP.md
-#   docker compose up --build
+#   docker compose --env-file ../.env up --build
+#
+# THE --env-file FLAG IS REQUIRED, not optional. Compose resolves ${VAR}
+# interpolation from a `.env` in the compose file's own directory; the real
+# secrets file lives once at the repo root and is deliberately NOT duplicated
+# here (a second copy of a secrets file is a leak waiting to happen). See
+# N1/OPERATIONS.md.
+#
+# `name:` below is also required rather than cosmetic: Compose otherwise
+# derives the project name from the containing directory, and this repo sits
+# in `N^2PSM` — `n^2psm` fails Compose's own [a-z0-9][a-z0-9_-]* rule, and `^`
+# is additionally a cmd.exe escape character on Windows.
+#
+# Build contexts point up and across into the developer domains:
+#   backend    -> ../P/backend-api   (Domain A, capture path)
+#   ai-service -> ../M/ai-service    (Domain C, AI verification)
 #
 # What you get:
 #   :27017 MongoDB (local container — kept as an offline-dev fallback only;
@@ -31,6 +45,8 @@
 # "the mobile client's own presigned upload PUT" paths need it, because
 # those specific requests are made by a browser or Capacitor WebView on the
 # host, not by a container.
+
+name: n2psm
 
 services:
   mongo:
@@ -93,7 +109,7 @@ services:
       retries: 10
 
   ai-service:
-    build: ./Person4_AIBiometricService
+    build: ../M/ai-service
     ports:
       - "8000:8000"
     environment:
@@ -141,7 +157,7 @@ services:
     restart: unless-stopped
 
   backend:
-    build: ./Person3_BackendAPI
+    build: ../P/backend-api
     ports:
       - "5000:5000"
     environment:

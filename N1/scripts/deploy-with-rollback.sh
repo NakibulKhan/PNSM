@@ -5,11 +5,14 @@
 # real /health endpoint after a rebuild, this re-tags and restarts the
 # previous, known-good image instead of leaving the broken build running.
 #
-# No GitHub Actions/AWS CodeBuild/Gemini-driven root-cause analysis here —
-# this project stays local-only and unpushed — but the rollback mechanic
-# itself needs none of that, it's pure Docker Compose.
+# Pure Docker Compose — needs no CI runner or cloud build service, which is
+# what makes it usable as the on-prem deploy path and as a rehearsal for the
+# hosted one. Owned by N1 (deployment).
 set -uo pipefail
 
+# Resolves to N1/ — where docker-compose.yml lives after the N²PSM
+# restructure. The secrets file is deliberately NOT duplicated into N1; it
+# stays once at the repo root, hence --env-file ../.env on every compose call.
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
@@ -37,8 +40,8 @@ declare -A HAS_BACKUP
 # does not, so that is the real rollback handle this script uses.
 echo "== tagging current images as rollback backups =="
 for service in "${!HEALTH_URLS[@]}"; do
-  target_tag="pnsm_khan_edit-${service}:latest"
-  backup_tag="pnsm_khan_edit-${service}:pre-deploy-backup"
+  target_tag="n2psm-${service}:latest"
+  backup_tag="n2psm-${service}:pre-deploy-backup"
   if docker tag "$target_tag" "$backup_tag" 2>/dev/null; then
     HAS_BACKUP["$service"]=1
     echo "  $service -> $backup_tag"
@@ -50,7 +53,7 @@ done
 
 echo
 echo "== docker compose up -d --build =="
-docker compose up -d --build
+docker compose --env-file ../.env up -d --build
 
 curl_check() {
   local url="$1"
@@ -88,7 +91,7 @@ if [ "${#FAILED_SERVICES[@]}" -eq 0 ]; then
   echo
   echo "== deploy succeeded: removing rollback backup tags =="
   for service in "${!HEALTH_URLS[@]}"; do
-    [ "${HAS_BACKUP[$service]:-0}" -eq 1 ] && docker rmi "pnsm_khan_edit-${service}:pre-deploy-backup" >/dev/null 2>&1
+    [ "${HAS_BACKUP[$service]:-0}" -eq 1 ] && docker rmi "n2psm-${service}:pre-deploy-backup" >/dev/null 2>&1
   done
   echo "deploy-with-rollback: all watched services healthy. Nothing to roll back."
   exit 0
@@ -97,15 +100,15 @@ fi
 echo
 echo "== rolling back: ${FAILED_SERVICES[*]} =="
 for service in "${FAILED_SERVICES[@]}"; do
-  target_tag="pnsm_khan_edit-${service}:latest"
-  backup_tag="pnsm_khan_edit-${service}:pre-deploy-backup"
+  target_tag="n2psm-${service}:latest"
+  backup_tag="n2psm-${service}:pre-deploy-backup"
   if [ "${HAS_BACKUP[$service]:-0}" -ne 1 ]; then
     echo "  $service: no previous image recorded — cannot roll back automatically. Investigate manually."
     continue
   fi
   echo "  $service: re-tagging $backup_tag -> $target_tag and restarting"
   docker tag "$backup_tag" "$target_tag"
-  docker compose up -d --no-build "$service"
+  docker compose --env-file ../.env up -d --no-build "$service"
 done
 
 echo

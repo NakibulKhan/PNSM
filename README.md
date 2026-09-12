@@ -1,77 +1,76 @@
-# PNSM — Workforce Attendance & Management System
+# N²PSM — Workforce Attendance & Management System
 
-**PNSM** (Productivity, Network, and Staff Management) is an AI-verified, location-aware
-workforce attendance system: employees check in via a mobile app using a selfie (matched
-against a stored face embedding) and GPS geofencing, HR/Super Admins manage the workforce
-from a real-time web dashboard, and a backend API + AI microservice handle the data,
-security, and biometric matching underneath.
+**N²PSM** is an AI-verified, location-aware workforce attendance system. Employees check in
+from a mobile app using a live selfie (matched against an enrolled face embedding) plus GPS
+geofencing; HR and Super Admins manage the workforce from a real-time web console; a backend
+API and an AI verification microservice handle the data, security, and biometric matching
+underneath.
 
-This is a **CSE482L (Internet and Web Technology) course project — Group 8, North South
-University**, built against the shared architecture document
-[`PNSM_4Person_Bulletproof_Plan.pdf`](./PNSM_4Person_Bulletproof_Plan.pdf), which splits
-the system into four independent quadrants, one per team member. This repository is the
-merge of all four quadrants into a single project.
+## Team structure
 
-> **Status:** all four quadrants are local dev-complete — each one's own dependencies
-> installed, typecheck/lint/test/build actually run (not just written), and every real bug
-> that surfaced along the way fixed, not just documented. See
-> [`ROADMAP.md`](./ROADMAP.md) for the phase-by-phase detail. The ~9 original
-> cross-quadrant conflicts plus everything else discovered while wiring the quadrants
-> together (refresh-token delivery, face-match status naming, PIN transmission, dead
-> pre-integration code, and more) are resolved and recorded in
-> [`DECISIONS.md`](./DECISIONS.md) — read that before touching auth, the check-in
-> pipeline, or anything that crosses a quadrant boundary. To run the whole stack locally,
-> see [`SETUP.md`](./SETUP.md).
+Five people, three development domains plus two non-development roles:
 
-## The four quadrants
-
-| Folder | Quadrant | Owner | Stack |
+| Folder | Role | Owner | Responsibility |
 |---|---|---|---|
-| [`Person1_MobileClient/`](./Person1_MobileClient) | I — Mobile Edge Client | Person 1 | Vite + React + Tailwind CSS v4 + CapacitorJS |
-| [`Person2_WebDashboard/`](./Person2_WebDashboard) | II — Web Command Center | Person 2 | Vite + React + TypeScript, React Router v7, TanStack Query/Table, MapLibre GL, Socket.IO client |
-| [`Person3_BackendAPI/`](./Person3_BackendAPI) | III — Backend API | Person 3 | Express 5 + TypeScript + Mongoose (MongoDB Atlas, 2dsphere geofencing), JWT (RS256/HS256 dual-token), Socket.IO |
-| [`Person4_AIBiometricService/`](./Person4_AIBiometricService) | IV — AI Biometrics + Cloud/DevOps | Person 4 | Python + FastAPI, ONNX (ArcFace embeddings), AES-256-GCM/AWS KMS field encryption, Docker, AWS ECS/CloudFront manifests |
+| [`P/`](./P) | Domain A — Capture Path | developer | The employee check-in vertical end to end: the mobile app and the `/api/mobile/*` routes that serve it |
+| [`S/`](./S) | Domain B — Web Console | developer | Everything HR and Super Admins see and act on |
+| [`M/`](./M) | Domain C — AI Verification | developer | Biometric matching, liveness, anti-spoofing, and the vision/ML pipeline |
+| [`N2/`](./N2) | Audit & Merge | N2 | Reviews each domain's work, verifies correctness and security, merges to `main`, hands off to N1. Writes no feature code. |
+| [`N1/`](./N1) | Deployment & Operations | N1 | Deploys the merged version and monitors it in production |
 
-Each folder is a **standalone project** with its own `package.json`/`requirements.txt`,
-its own README, and its own setup instructions — start there for how to install and run
-that specific piece. This root README only covers how the pieces fit together.
+Work flows **P/S/M → N2 → N1**: developers submit, N2 audits and merges, N1 deploys.
 
-## How the pieces talk to each other
+## What's in each domain
 
-- **Person 1 (mobile)** captures a compressed selfie + GPS coordinates + PIN and POSTs a
-  check-in payload to **Person 3 (backend)**.
-- **Person 3 (backend)** validates the geofence with MongoDB's `$geoWithin`/`$centerSphere`,
-  then hands the selfie off to **Person 4 (AI service)** for face-embedding comparison.
-- **Person 4 (AI service)** returns a match decision (cosine similarity vs. the stored,
-  encrypted embedding) back to Person 3, which records the `AttendanceLog` and never itself
-  touches raw embeddings or encryption keys — that stays entirely inside Person 4's service
-  (embeddings are stored in an isolated `FaceEmbedding` collection, encrypted client-side
-  before Person 3 ever persists them).
-- **Person 3 (backend)** pushes the resulting check-in event over Socket.IO to
-  **Person 2 (web dashboard)**, which shows it live in the HR/Super Admin console.
-- **Person 4** also owns the Docker/AWS deployment topology (ECS, CloudFront, KMS, IAM) for
-  the whole system, not just its own service.
+| Path | Stack |
+|---|---|
+| `P/mobile-client/` | Vite + React + Tailwind v4 + Capacitor (iOS/Android) |
+| `P/backend-api/` | Express 5 + TypeScript + Mongoose (MongoDB Atlas, 2dsphere geofencing), dual-token JWT, Socket.IO |
+| `S/web-dashboard/` | Vite + React + TypeScript, React Router v7, TanStack Query/Table, MapLibre GL, Socket.IO client |
+| `M/ai-service/` | Python + FastAPI, ONNX (ArcFace embeddings), AES-256-GCM / AWS KMS field encryption |
 
-This ownership split (and the exact request/response contracts between quadrants) is
-documented in more detail in `Person4_AIBiometricService/docs/INTEGRATION.md` and
-`Person2_WebDashboard/docs/01-API-CONTRACT.md`.
+Each is a standalone project with its own dependencies, README, and setup instructions —
+start there to install and run one piece. This README covers only how they fit together.
 
-## Repository history
+## How the pieces talk
 
-This repo is a local, single-machine build, structured the way a real four-person team's
-repo would be: one git branch per quadrant, each merged into `main` with its own commits
-(`git log --graph --all` shows this), and every remaining task tracked by which quadrant
-it belongs to. It has **not** been pushed to GitHub or any remote — everything above
-describes the local history only.
-[`GITHUB_COLLABORATION_GUIDE.md`](./GITHUB_COLLABORATION_GUIDE.md) is kept as a reference
-for how a real push/handoff to the four actual team members would work, if this project
-is ever shared that way — it does not describe anything that has happened yet.
+- **`P/mobile-client`** captures a compressed selfie, GPS coordinates, liveness-challenge
+  frames, and a PIN, then POSTs a check-in payload to `P/backend-api`.
+- **`P/backend-api`** validates the geofence server-side with MongoDB's
+  `$geoWithin`/`$centerSphere`, then hands the selfie to `M/ai-service` for verification.
+- **`M/ai-service`** returns a decision — cosine similarity against the stored encrypted
+  embedding, plus liveness and presentation-attack signals. The backend records the
+  `AttendanceLog` and never touches raw embeddings or encryption keys; those stay entirely
+  inside the AI service.
+- **`P/backend-api`** pushes the resulting check-in event over Socket.IO to
+  `S/web-dashboard`, which renders it live in the HR console.
+
+The exact request/response contracts across those boundaries are frozen in
+[`N2/contracts/API_CONTRACT.lock.md`](./N2/contracts/API_CONTRACT.lock.md) — that file is the
+acceptance criterion for any change that crosses a domain boundary, and N2 owns it.
 
 ## Where to look next
 
-- Running the whole stack locally, end to end → [`SETUP.md`](./SETUP.md)
-- Setting up and running one specific quadrant → that folder's own `README.md`
-- What's left, phase by phase → [`ROADMAP.md`](./ROADMAP.md)
-- How the cross-quadrant conflicts were resolved → [`DECISIONS.md`](./DECISIONS.md)
-- If this is ever pushed to GitHub for the real team → [`GITHUB_COLLABORATION_GUIDE.md`](./GITHUB_COLLABORATION_GUIDE.md)
-- The original architecture spec → [`PNSM_4Person_Bulletproof_Plan.pdf`](./PNSM_4Person_Bulletproof_Plan.pdf)
+| I want to… | Go to |
+|---|---|
+| Deploy or operate the system | [`N1/OPERATIONS.md`](./N1/OPERATIONS.md) |
+| Know what version is cleared for deployment | [`N1/STATUS.md`](./N1/STATUS.md) |
+| Run the whole stack locally | [`N2/SETUP.md`](./N2/SETUP.md) |
+| Change something that crosses a domain boundary | [`N2/contracts/API_CONTRACT.lock.md`](./N2/contracts/API_CONTRACT.lock.md) |
+| Understand why something is built the way it is | [`DECISIONS.md`](./DECISIONS.md) |
+| See what's planned | [`ROADMAP.md`](./ROADMAP.md) |
+| Set up or run one specific domain | that folder's own `README.md` |
+| Check the supply chain before accepting a dependency change | `bash N2/scripts/audit-gate.sh` |
+
+## Repository layout notes
+
+One git repository, one `.git`, five top-level folders — one per team member. Domain work
+happens on per-domain branches and reaches `main` through N2's review and merge, so `main`
+is always the merged, audited truth and the thing N1 deploys from.
+
+Two things a fresh clone will **not** give you, both deliberate and both required before the
+stack will run:
+
+- **ONNX model weights** (13.8 MB, gitignored) — see [`N1/models/FETCH.md`](./N1/models/FETCH.md)
+- **The Python virtual environment** — path-bound, never copied between machines; recreate
+  it locally in `M/ai-service/`
