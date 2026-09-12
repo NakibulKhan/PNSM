@@ -8,10 +8,18 @@
 # here (a second copy of a secrets file is a leak waiting to happen). See
 # N1/OPERATIONS.md.
 #
-# `name:` below is also required rather than cosmetic: Compose otherwise
-# derives the project name from the containing directory, and this repo sits
-# in `N^2PSM` — `n^2psm` fails Compose's own [a-z0-9][a-z0-9_-]* rule, and `^`
-# is additionally a cmd.exe escape character on Windows.
+# `name:` below is deliberate, not cosmetic. Compose otherwise derives the
+# project name from the containing directory, which would make image tags
+# depend on what the checkout happens to be called. Pinning it keeps
+# `n2psm-<service>:latest` stable, which deploy-with-rollback.sh relies on to
+# locate its backup images.
+#
+# WHY THE FOLDER IS NOT NAMED `N^2PSM`: it briefly was, and it broke the whole
+# toolchain. npm runs scripts through cmd.exe, which treats `^` as an escape
+# character and silently strips it — every `npm test` / `npm run build`
+# resolved to a nonexistent `E:\N2PSM\...`. Compose would have rejected
+# `n^2psm` as a project name for a related reason. The project is still called
+# N²PSM; only the directory avoids the symbol. Do not rename it back.
 #
 # Build contexts point up and across into the developer domains:
 #   backend    -> ../P/backend-api   (Domain A, capture path)

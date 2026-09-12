@@ -9,38 +9,80 @@ treat the version named here as the one authorized for deployment.
 
 | | |
 |---|---|
-| **Commit** | `1b03d8d` |
+| **Commit** | `93b50cc` (+ doc fixes) |
 | **Branch** | `main` |
 | **Handoff date** | 2026-09-12 |
-| **Status** | ⚠️ **Not yet cleared for deployment** — see below |
+| **Status** | ⚠️ **Restructure verified — blocked on one critical CVE** |
 
-## Not yet cleared — why
+## Restructure verification — complete
 
-This version is the N²PSM restructure itself (4 quadrants reorganized into 3
-developer domains plus N1/N2). The application code is unchanged from the
-previously verified state, but the following must pass in the new layout before
-N1 deploys anything:
+Every domain was rebuilt from scratch at the new path and re-verified:
 
-- [ ] Per-domain build + test suites green in their new paths
-- [ ] `bash ../N2/scripts/audit-gate.sh` — 0 high/critical vulnerabilities
-- [ ] `docker compose --env-file ../.env config` resolves
+| Check | Result |
+|---|---|
+| P / mobile-client — vitest | ✅ **95 / 95** |
+| P / mobile-client — build | ✅ built |
+| P / mobile-client — capacitor parity | ✅ core all v8 (1 documented exception) |
+| P / backend-api — typecheck | ✅ clean |
+| P / backend-api — jest | ✅ **159 / 159** |
+| S / web-dashboard — verify (typecheck+lint+test+build) | ✅ **105 / 105**, built |
+| S / web-dashboard — Playwright e2e | ✅ **7 / 7** |
+| M / ai-service — pytest | ✅ **432 / 432** |
+| M / ai-service — ruff | ✅ all checks passed |
+| M / ai-service — mypy | ✅ no issues, 47 files |
+| `docker compose config` | ✅ resolves; project `n2psm`, all 3 build contexts valid |
+| ONNX weights | ✅ both hashes match `checksums.txt` |
+
+pytest is 432 rather than the previously-recorded 420 — the slow-marker work
+added tests since that baseline was written. Higher is fine; a *lower* count is
+the thing to investigate, because it means something silently didn't run.
+
+## 🔴 Blocker — critical CVE in maplibre-gl
+
+`bash ../N2/scripts/audit-gate.sh` fails on one finding. **This is not caused by
+the restructure** — it is a newly-published advisory that surfaced when
+dependencies were reinstalled from scratch.
+
+**[GHSA-jrc7-96c5-q579](https://github.com/advisories/GHSA-jrc7-96c5-q579) —
+MapLibre GL JS: XSS sanitizer bypass in `DOM.sanitize()`** (critical).
+Installed `maplibre-gl@4.7.1`; affected `<= 6.4.0`; fixed in `6.9.0`.
+
+**It is reachable in our code, not theoretical.**
+`S/web-dashboard/src/components/map/live-map.tsx:149` interpolates employee data
+straight into a MapLibre popup with no escaping:
+
+```js
+new gl.Popup(...).setHTML(
+  `<p ...>${entry.employee_name}</p> ... ${entry.employee_code} ...`
+)
+```
+
+`employee_name` is operator-entered data that round-trips through the database
+and back via `/attendance/live-map`. A name containing markup becomes stored XSS
+executing inside an authenticated HR / Super Admin session — an
+employee-to-admin privilege-escalation path.
+
+**Two fixes are needed, and the second matters more:**
+
+1. Upgrade `maplibre-gl` 4.7.1 → 6.9.0. That is a **two-major-version breaking
+   change** touching the geofence editor and the live map, so it needs its own
+   change and its own testing — which is exactly why it was not bundled into the
+   restructure commit.
+2. Stop interpolating unescaped user data into `setHTML()` at all. The library's
+   sanitizer is defence-in-depth, not the primary control — escape the values, or
+   build the node and assign via `textContent`. **This fix is independent of the
+   library version and should land regardless of when the upgrade happens.**
+
+Until both are done, treat the live-map screen as unsafe to expose to
+production data with untrusted operator input.
+
+## Remaining before clearance
+
+- [x] Per-domain build + test suites green in their new paths
+- [ ] `audit-gate.sh` — 0 high/critical (blocked on the CVE above)
+- [x] `docker compose --env-file ../.env config` resolves
 - [ ] Full stack up, all three `/health` endpoints responding
-- [ ] ONNX weights present and hash-verified (see `models/FETCH.md`)
-
-N2 will flip this section to cleared once the gate passes.
-
-## Expected test baselines
-
-Use these to confirm nothing was lost in a deploy or a rebuild — a *lower*
-count means something didn't run, which is easy to miss:
-
-| Domain | Suite | Expected |
-|---|---|---|
-| P / mobile-client | vitest | 95 tests |
-| P / backend-api | jest | 159 tests |
-| S / web-dashboard | vitest | 105 tests |
-| S / web-dashboard | Playwright e2e | 7 tests |
-| M / ai-service | pytest | 420 tests |
+- [x] ONNX weights present and hash-verified
 
 ## Known operational constraints
 

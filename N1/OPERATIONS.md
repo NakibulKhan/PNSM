@@ -24,10 +24,19 @@ docker compose --env-file ../.env up --build
   once at the repo root and is deliberately *not* duplicated into `N1/` — a
   second copy of a secrets file is a leak waiting to happen. Omit this flag and
   every `${VAR:?...}` guard in the compose file fires.
-- **`name: n2psm` inside `docker-compose.yml` is mandatory.** Compose otherwise
-  derives the project name from the containing directory. This repo lives in
-  `N^2PSM`, and `n^2psm` violates Compose's own `[a-z0-9][a-z0-9_-]*` rule (`^`
-  is also a cmd.exe escape character on Windows). Do not remove that key.
+- **`name: n2psm` inside `docker-compose.yml` is deliberate.** Compose otherwise
+  derives the project name from the containing directory, which would make image
+  tags depend on what the checkout happens to be called. Pinning it keeps
+  `n2psm-<service>:latest` stable — which `deploy-with-rollback.sh` relies on to
+  locate its backup images. Do not remove that key.
+
+> **Why the folder is `NsquaredPSM` and not `N^2PSM`:** it briefly was the
+> latter, and it broke the entire toolchain. npm runs scripts through cmd.exe,
+> which treats `^` as an escape character and silently strips it — every
+> `npm test` and `npm run build` across all three domains resolved to a
+> nonexistent `E:\N2PSM\...` path. The project is still named **N²PSM**
+> everywhere it is written; only the directory avoids the symbol. Please don't
+> rename it back.
 
 Self-healing deploy with automatic rollback on a failed health check:
 
